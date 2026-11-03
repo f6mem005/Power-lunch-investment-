@@ -26,6 +26,12 @@ const money = (v: unknown, name: string) => {
   return Math.round(n * 100) / 100;
 };
 const optMoney = (v: unknown, name: string) => (v === "" || v === null || v === undefined ? null : money(v, name));
+const optPct = (v: unknown, name: string) => {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 100) bad(`${name} must be between 0 and 100`);
+  return Math.round(n * 1000) / 1000;
+};
 const dateStr = (v: unknown, name: string) => {
   const s = str(v, name, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) bad(`${name} must be a date (YYYY-MM-DD)`);
@@ -110,6 +116,8 @@ export default async (req: Request) => {
           valueSource: body.manualValue === "" || body.manualValue == null ? "estimate" : "statement",
           valueAsOf: body.manualValue === "" || body.manualValue == null ? null : new Date().toISOString().slice(0, 10),
           spvTotalRaise: optMoney(body.spvTotalRaise, "SPV total raise"),
+          mgmtFeePct: optPct(body.mgmtFeePct, "Management fee"),
+          carryPct: optPct(body.carryPct, "Carry"),
           notes: optStr(body.notes),
           valueHistory: [],
         };
@@ -124,6 +132,8 @@ export default async (req: Request) => {
         d.ticker = ticker(body.ticker);
         d.sharesHeld = optMoney(body.sharesHeld, "Shares held");
         d.spvTotalRaise = optMoney(body.spvTotalRaise, "SPV total raise");
+        d.mgmtFeePct = optPct(body.mgmtFeePct, "Management fee");
+        d.carryPct = optPct(body.carryPct, "Carry");
         d.notes = optStr(body.notes);
         const nextValue = optMoney(body.manualValue, "Current value");
         const nextSource = ["statement", "estimate"].includes(body.valueSource) ? body.valueSource : "estimate";

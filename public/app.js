@@ -52,26 +52,38 @@
     const holdings = state.holdings.filter((h) => inScope(h.dealId)).map((h) => {
       const dd = deals[h.dealId];
       const share = dd && dd.invested ? h.invested / dd.invested : 0;
-      const value = dd ? dd.value * share : 0;
-      return { ...h, share, value, gain: value + h.distributions - h.invested };
+      const deal = dealById(h.dealId);
+      const gross = dd ? dd.value * share : 0;
+      // Management fee comes out of the amount invested; carry is a % of profit with no hurdle.
+      const fee = h.invested * ((deal?.mgmtFeePct || 0) / 100);
+      const carry = ((deal?.carryPct || 0) / 100) * Math.max(0, gross + h.distributions - h.invested);
+      const value = gross - carry;
+      return { ...h, share, gross, fee, carry, value, gain: value + h.distributions - h.invested };
     });
+    Object.values(deals).forEach((d) => Object.assign(d, { net: 0, carry: 0, fee: 0, dist: 0 }));
+    holdings.forEach((h) => { const d = deals[h.dealId]; d.net += h.value; d.carry += h.carry; d.fee += h.fee; d.dist += h.distributions; });
     const people = {};
-    state.people.forEach((p, i) => (people[p.id] = { invested: 0, value: 0, distributions: 0, holdings: [], slot: Math.min(i + 1, 9) }));
+    state.people.forEach((p, i) => (people[p.id] = { invested: 0, value: 0, gross: 0, carry: 0, fee: 0, distributions: 0, holdings: [], slot: Math.min(i + 1, 9) }));
     holdings.forEach((h) => {
       const t = people[h.personId];
       if (!t) return;
       t.invested += h.invested;
       t.value += h.value;
+      t.gross += h.gross;
+      t.carry += h.carry;
+      t.fee += h.fee;
       t.distributions += h.distributions;
       t.holdings.push(h);
     });
     Object.values(people).forEach((t) => (t.gain = t.value + t.distributions - t.invested));
-    const total = holdings.reduce((a, h) => ({ invested: a.invested + h.invested, value: a.value + h.value, distributions: a.distributions + h.distributions }), { invested: 0, value: 0, distributions: 0 });
+    const total = holdings.reduce((a, h) => ({ invested: a.invested + h.invested, value: a.value + h.value, gross: a.gross + h.gross, carry: a.carry + h.carry, fee: a.fee + h.fee, distributions: a.distributions + h.distributions }), { invested: 0, value: 0, gross: 0, carry: 0, fee: 0, distributions: 0 });
     total.gain = total.value + total.distributions - total.invested;
     state.d = { deals, holdings, people, total };
   }
 
   const scopedDealList = () => state.deals.filter((d) => state.scope === "all" || d.channel === state.scope);
+  const valueTip = (h) => `Gross ${money(h.gross)} − carry ${money(h.carry)} = ${money(h.value)} net${h.fee ? ` · upfront fee paid ${money(h.fee)}` : ""}`;
+  const termsText = (d) => [d.mgmtFeePct != null ? `${d.mgmtFeePct}% upfront fee` : "", d.carryPct != null ? `${d.carryPct}% carry` : ""].filter(Boolean).join(" · ");
   const channelPill = (d) => (d?.channel === "individual" ? ' <span class="pill">Individual</span>' : "");
   const personById = (id) => state.people.find((p) => p.id === id);
   const dealById = (id) => state.deals.find((d) => d.id === id);
@@ -101,6 +113,7 @@
     const scopedDeals = scopedDealList();
     const hs = state.d.holdings;
     const estimated = scopedDeals.filter((d) => ["placeholder", "cost", "estimate"].includes(deals[d.id].basis));
+    const noTerms = scopedDeals.filter((d) => d.mgmtFeePct == null && d.carryPct == null);
     const kpi = (label, value, sub, c = "") => `<div class="card kpi"><div class="label">${label}</div><div class="value ${c}">${value}</div><div class="sub">${sub}</div></div>`;
     const rank = (type) => {
       const list = state.people.filter((p) => p.type === type && (f === "all" || people[p.id].invested > 0)).sort((a, b) => people[b.id].value - people[a.id].value);
@@ -112,30 +125,30 @@
     };
     const rows = scopedDeals
       .slice()
-      .sort((a, b) => deals[b.id].value - deals[a.id].value)
+      .sort((a, b) => deals[b.id].net - deals[a.id].net)
       .map((d) => {
         const dd = deals[d.id];
-        const dist = state.d.holdings.filter((h) => h.dealId === d.id).reduce((s, h) => s + h.distributions, 0);
-        const gain = dd.value + dist - dd.invested;
-        return `<tr><td><strong>${esc(d.name)}</strong>${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}</td>
-          <td class="num">${money(dd.invested)}</td><td class="num">${money(dd.value)} ${basisBadge(dd)}</td>
+        const gain = dd.net + dd.dist - dd.invested;
+        return `<tr><td><strong>${esc(d.name)}</strong>${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}${termsText(d) ? `<div class="muted small">${esc(termsText(d))}</div>` : ""}</td>
+          <td class="num">${money(dd.invested)}</td><td class="num"><span ${tipAttr(`Gross ${money(dd.value)} − carry ${money(dd.carry)} = ${money(dd.net)} net`)}>${money(dd.net)}</span> ${basisBadge(dd)}</td>
           <td class="num ${cls(gain)}">${signed(gain)}</td><td>${ownerBar(d.id)}</td></tr>`;
       })
       .join("");
     return `<div class="stack">
       ${estimated.length ? `<div class="banner" role="status"><strong>${estimated.length} of ${scopedDeals.length} deals</strong> use placeholder or estimated values, so gain/loss for them is not real yet. Set real values under Deals${state.role === "admin" ? "" : " (admin only)"}.</div>` : ""}
+      ${noTerms.length ? `<div class="banner" role="status">Fee and carry terms are not entered for <strong>${noTerms.length} of ${scopedDeals.length} deals</strong>, so their values are shown before carry.</div>` : ""}
       <div class="kpis">
-        ${kpi("Total invested", money(total.invested), `${hs.length} holdings across ${scopedDeals.length} deals`)}
-        ${kpi("Current value", money(total.value), "Allocated pro-rata by amount invested")}
+        ${kpi("Total invested", money(total.invested), `${hs.length} holdings across ${scopedDeals.length} deals${total.fee ? ` · ${money(total.fee)} of it is upfront fees` : ""}`)}
+        ${kpi("Current value (net)", money(total.value), `Gross ${money(total.gross)} · carry −${money(total.carry)}`)}
         ${kpi("Gain / loss", signed(total.gain), total.invested ? `${pct(total.gain / total.invested)} on cost (incl. distributions)` : "", cls(total.gain))}
         ${kpi("Distributions received", money(total.distributions), "Cash returned so far")}
       </div>
       <div class="grid-2">
-        <div class="card"><h2>Club members - current value</h2>${rank("member")}</div>
-        <div class="card"><h2>Not club members - current value</h2>${rank("non-member")}</div>
+        <div class="card"><h2>Club members - net value</h2>${rank("member")}</div>
+        <div class="card"><h2>Not club members - net value</h2>${rank("non-member")}</div>
       </div>
       <div class="card"><h2>Every investment</h2>${legend()}
-        <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th><th class="num">Current value</th><th class="num">Gain / loss</th><th>Who holds it</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">No deals yet.</td></tr>'}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th><th class="num">Value (net of carry)</th><th class="num">Gain / loss</th><th>Who holds it</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">No deals yet.</td></tr>'}</tbody></table></div>
       </div></div>`;
   }
 
@@ -146,12 +159,12 @@
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((h) => {
         const d = dealById(h.dealId);
-        return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num">${money(h.value)} ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}</td></tr>`;
+        return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span> ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}</td></tr>`;
       })
       .join("");
     return `<div class="card"><div class="person-head"><h3><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}</h3>
       <span class="muted">${money(t.invested)} invested · <strong>${money(t.value)}</strong> now · <span class="${cls(t.gain)}">${signed(t.gain)}</span></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Deal</th><th>Date</th><th class="num">Invested</th><th class="num">Share of deal</th><th class="num">Value</th><th class="num">Gain / loss</th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>Deal</th><th>Date</th><th class="num">Invested</th><th class="num">Share of deal</th><th class="num">Value (net)</th><th class="num">Gain / loss</th></tr></thead>
       <tbody>${rows || '<tr><td colspan="6" class="muted">No holdings yet.</td></tr>'}</tbody></table></div></div>`;
   }
   function people() {
@@ -167,22 +180,23 @@
   function deals() {
     return `<div class="stack">${scopedDealList()
       .slice()
-      .sort((a, b) => state.d.deals[b.id].value - state.d.deals[a.id].value)
+      .sort((a, b) => state.d.deals[b.id].net - state.d.deals[a.id].net)
       .map((d) => {
         const dd = state.d.deals[d.id];
         const hs = state.d.holdings.filter((h) => h.dealId === d.id).sort((a, b) => b.invested - a.invested);
         const q = d.ticker ? state.prices[d.ticker] : null;
         const needShares = d.ticker && !d.sharesHeld;
-        const gain = dd.value + hs.reduce((s, h) => s + h.distributions, 0) - dd.invested;
+        const gain = dd.net + dd.dist - dd.invested;
         const raise = d.spvTotalRaise ? `Club owns ${pct(dd.invested / d.spvTotalRaise, 3)} of a ${money(d.spvTotalRaise)} SPV raise` : "";
         return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${q && q.price ? ` ${usd2.format(q.price)}` : ""}</span>` : ""}</h3>
           <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Update value / details</button>` : ""}</span></div>
-          <p class="muted" style="margin:0 0 10px">Invested <strong>${money(dd.invested)}</strong> · Value <strong>${money(dd.value)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)}</span>${raise ? ` · ${raise}` : ""}</p>
+          <p class="muted" style="margin:0 0 10px">Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)}</span>${raise ? ` · ${raise}` : ""}</p>
+          <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
           ${needShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${q && q.error ? ` (Price lookup: ${esc(q.error)})` : ""}</p>` : ""}
           ${d.ticker && q && !q.price ? `<p class="muted">Live price unavailable: ${esc(q.error || "no data")}</p>` : ""}
           ${d.notes ? `<p class="muted">${esc(d.notes)}</p>` : ""}
-          <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value</th><th class="num">Distributions</th></tr></thead><tbody>
-          ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num">${money(h.value)}</td><td class="num">${money(h.distributions)}</td></tr>`).join("")}
+          <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value (net)</th><th class="num">Distributions</th></tr></thead><tbody>
+          ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span></td><td class="num">${money(h.distributions)}</td></tr>`).join("")}
           </tbody></table></div></div>`;
       })
       .join("") || '<p class="muted">No deals yet.</p>'}</div>`;
@@ -213,7 +227,9 @@
             <div class="form-grid"><div><label for="ad-ch">Held through</label><select id="ad-ch" name="channel"><option value="club">Power Lunch Club</option><option value="individual">Individual</option></select></div>
             <div><label for="ad-tk">Ticker (if public)</label><input id="ad-tk" name="ticker" placeholder="e.g. SPCX"></div>
             <div><label for="ad-raise">SPV total raise ($)</label><input id="ad-raise" name="spvTotalRaise" type="number" min="0" step="1"></div>
-            <div><label for="ad-val">Current value ($, whole deal)</label><input id="ad-val" name="manualValue" type="number" min="0" step="0.01"></div></div>
+            <div><label for="ad-val">Current value ($, whole deal, before carry)</label><input id="ad-val" name="manualValue" type="number" min="0" step="0.01"></div>
+            <div><label for="ad-fee">Upfront mgmt fee (% of amount invested)</label><input id="ad-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01"></div>
+            <div><label for="ad-carry">Carry (% of profit)</label><input id="ad-carry" name="carryPct" type="number" min="0" max="100" step="0.01"></div></div>
             <label for="ad-notes">Notes</label><input id="ad-notes" name="notes"><p class="error" data-err></p><div class="row-actions"><button class="btn primary" type="submit">Add deal</button></div></form></div>
         <div class="card"><h2>Add a person</h2>
           <form id="addPerson"><label for="ap-name">Name</label><input id="ap-name" name="name" required>
@@ -251,7 +267,9 @@
         <div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Power Lunch Club</option><option value="individual"${d.channel === "individual" ? " selected" : ""}>Individual</option></select></div>
         <div><label for="e-tk">Ticker (if public)</label><input id="e-tk" name="ticker" value="${esc(d.ticker || "")}"></div>
         <div><label for="e-sh">Shares held (whole deal)</label><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}"></div>
-        <div><label for="e-val">Current value ($, whole deal)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
+        <div><label for="e-fee">Upfront mgmt fee (% of amount invested)</label><input id="e-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01" value="${d.mgmtFeePct ?? ""}"></div>
+        <div><label for="e-carry">Carry (% of profit)</label><input id="e-carry" name="carryPct" type="number" min="0" max="100" step="0.01" value="${d.carryPct ?? ""}"></div>
+        <div><label for="e-val">Current value ($, whole deal, before carry)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
         <div><label for="e-src">Value source</label><select id="e-src" name="valueSource"><option value="statement"${d.valueSource === "statement" ? " selected" : ""}>From a statement</option><option value="estimate"${d.valueSource !== "statement" ? " selected" : ""}>Estimate</option></select></div>
         <div><label for="e-asof">Value as-of date</label><input id="e-asof" name="valueAsOf" type="date" value="${d.valueAsOf || today()}"></div>
         <div><label for="e-raise">SPV total raise ($)</label><input id="e-raise" name="spvTotalRaise" type="number" min="0" step="1" value="${d.spvTotalRaise ?? ""}"></div>
