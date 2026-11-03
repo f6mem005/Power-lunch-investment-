@@ -1,0 +1,15 @@
+{
+  "name": "power-lunch-investments",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Power Lunch Investments - club and member investment dashboard",
+  "scripts": {
+    "dev": "netlify dev",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^11.1.7",
+    "@netlify/functions": "^6.0.3"
+  }
+}

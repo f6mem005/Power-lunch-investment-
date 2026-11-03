@@ -1,0 +1,42 @@
+{
+  "people": [
+    { "id": "manny", "name": "Manny", "type": "member", "order": 1 },
+    { "id": "johnny", "name": "Johnny", "type": "member", "order": 2 },
+    { "id": "derek", "name": "Derek", "type": "member", "order": 3 },
+    { "id": "peter", "name": "Peter", "type": "member", "order": 4 },
+    { "id": "alex", "name": "Alex", "type": "member", "order": 5 },
+    { "id": "ed", "name": "Ed", "type": "non-member", "order": 6 }
+  ],
+  "deals": [
+    { "id": "spacex-2024", "name": "SpaceX 2024", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 22500, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 5000000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
+    { "id": "openai", "name": "OpenAI", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 18900, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2000000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
+    { "id": "anthropic", "name": "Anthropic", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 13500, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 3000000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
+    { "id": "forterra", "name": "Forterra", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 9000, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2010000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
+    { "id": "spacex-2026", "name": "SpaceX 2026", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 22500, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2700000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
+    { "id": "xai", "name": "xAI", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 18000, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2000000, "notes": "Merged into SpaceX (SPCX). Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] }
+  ],
+  "holdings": [
+    { "id": "h01", "dealId": "spacex-2024", "personId": "manny", "date": "2024-10-02", "invested": 5000, "distributions": 0 },
+    { "id": "h02", "dealId": "spacex-2024", "personId": "johnny", "date": "2024-10-02", "invested": 5000, "distributions": 0 },
+    { "id": "h03", "dealId": "spacex-2024", "personId": "peter", "date": "2024-10-02", "invested": 5000, "distributions": 0 },
+    { "id": "h04", "dealId": "spacex-2024", "personId": "alex", "date": "2024-10-02", "invested": 5000, "distributions": 0 },
+    { "id": "h05", "dealId": "spacex-2024", "personId": "derek", "date": "2024-10-02", "invested": 5000, "distributions": 0 },
+    { "id": "h06", "dealId": "openai", "personId": "manny", "date": "2025-03-31", "invested": 5000, "distributions": 0 },
+    { "id": "h07", "dealId": "openai", "personId": "alex", "date": "2025-03-31", "invested": 4000, "distributions": 0 },
+    { "id": "h08", "dealId": "openai", "personId": "peter", "date": "2025-03-31", "invested": 4000, "distributions": 0 },
+    { "id": "h09", "dealId": "openai", "personId": "johnny", "date": "2025-03-31", "invested": 4000, "distributions": 0 },
+    { "id": "h10", "dealId": "openai", "personId": "derek", "date": "2025-03-31", "invested": 4000, "distributions": 0 },
+    { "id": "h11", "dealId": "anthropic", "personId": "manny", "date": "2025-08-12", "invested": 5000, "distributions": 0 },
+    { "id": "h12", "dealId": "anthropic", "personId": "derek", "date": "2025-08-12", "invested": 5000, "distributions": 0 },
+    { "id": "h13", "dealId": "anthropic", "personId": "johnny", "date": "2025-08-12", "invested": 5000, "distributions": 0 },
+    { "id": "h14", "dealId": "forterra", "personId": "manny", "date": "2025-08-27", "invested": 5000, "distributions": 0 },
+    { "id": "h15", "dealId": "forterra", "personId": "ed", "date": "2025-08-27", "invested": 5000, "distributions": 0 },
+    { "id": "h16", "dealId": "spacex-2026", "personId": "manny", "date": "2026-01-15", "invested": 6250, "distributions": 0 },
+    { "id": "h17", "dealId": "spacex-2026", "personId": "peter", "date": "2026-01-15", "invested": 6250, "distributions": 0 },
+    { "id": "h18", "dealId": "spacex-2026", "personId": "derek", "date": "2026-01-15", "invested": 6250, "distributions": 0 },
+    { "id": "h19", "dealId": "spacex-2026", "personId": "johnny", "date": "2026-01-15", "invested": 6250, "distributions": 0 },
+    { "id": "h20", "dealId": "xai", "personId": "manny", "date": "2026-01-19", "invested": 5000, "distributions": 0 },
+    { "id": "h21", "dealId": "xai", "personId": "derek", "date": "2026-01-19", "invested": 5000, "distributions": 0 },
+    { "id": "h22", "dealId": "xai", "personId": "ed", "date": "2026-01-19", "invested": 10000, "distributions": 0 }
+  ]
+}

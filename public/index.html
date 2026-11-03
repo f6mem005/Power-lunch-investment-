@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Power Lunch Investments</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M7 22l6-7 4 4 8-10' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <section id="login" class="login" hidden>
+    <form id="loginForm" class="card login-card" autocomplete="off">
+      <h1>Power Lunch Investments</h1>
+      <p class="muted">Enter the passcode to continue.</p>
+      <label for="passcode">Passcode</label>
+      <input id="passcode" name="passcode" type="password" required autofocus>
+      <p id="loginError" class="error" role="alert"></p>
+      <button class="btn primary" type="submit">Sign in</button>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand">Power Lunch Investments</div>
+      <nav id="tabs" aria-label="Sections">
+        <a href="#overview" data-tab="overview">Overview</a>
+        <a href="#people" data-tab="people">People</a>
+        <a href="#deals" data-tab="deals">Deals</a>
+        <a href="#admin" data-tab="admin" id="adminTab" hidden>Manage</a>
+      </nav>
+      <div class="actions">
+        <span id="roleBadge" class="badge"></span>
+        <button id="themeBtn" class="btn ghost" type="button" aria-label="Toggle light or dark theme">Theme</button>
+        <button id="logoutBtn" class="btn ghost" type="button">Sign out</button>
+      </div>
+    </header>
+    <main id="view" tabindex="-1"></main>
+  </div>
+
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+  <dialog id="dlg"></dialog>
+  <script src="/app.js" defer></script>
+</body>
+</html>
