@@ -14,7 +14,7 @@
   async function api(path, opts = {}) {
     const res = await fetch(path, {
       credentials: "same-origin",
-      headers: opts.body ? { "content-type": "application/json" } : {},
+      headers: opts.method && opts.method !== "GET" ? { "content-type": "application/json" } : {},
       ...opts,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
     });
@@ -159,12 +159,12 @@
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((h) => {
         const d = dealById(h.dealId);
-        return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span> ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}</td></tr>`;
+        return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span> ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}</td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`;
       })
       .join("");
-    return `<div class="card"><div class="person-head"><h3><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}</h3>
+    return `<div class="card"><div class="person-head"><h3><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}${state.role === "admin" ? ` <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button>` : ""}</h3>
       <span class="muted">${money(t.invested)} invested · <strong>${money(t.value)}</strong> now · <span class="${cls(t.gain)}">${signed(t.gain)}</span></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Deal</th><th>Date</th><th class="num">Invested</th><th class="num">Share of deal</th><th class="num">Value (net)</th><th class="num">Gain / loss</th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>Deal</th><th>Date</th><th class="num">Invested</th><th class="num">Share of deal</th><th class="num">Value (net)</th><th class="num">Gain / loss</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead>
       <tbody>${rows || '<tr><td colspan="6" class="muted">No holdings yet.</td></tr>'}</tbody></table></div></div>`;
   }
   function people() {
@@ -189,14 +189,14 @@
         const gain = dd.net + dd.dist - dd.invested;
         const raise = d.spvTotalRaise ? `Club owns ${pct(dd.invested / d.spvTotalRaise, 3)} of a ${money(d.spvTotalRaise)} SPV raise` : "";
         return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${q && q.price ? ` ${usd2.format(q.price)}` : ""}</span>` : ""}</h3>
-          <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Update value / details</button>` : ""}</span></div>
+          <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)}</span>${raise ? ` · ${raise}` : ""}</p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
           ${needShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${q && q.error ? ` (Price lookup: ${esc(q.error)})` : ""}</p>` : ""}
           ${d.ticker && q && !q.price ? `<p class="muted">Live price unavailable: ${esc(q.error || "no data")}</p>` : ""}
           ${d.notes ? `<p class="muted">${esc(d.notes)}</p>` : ""}
-          <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value (net)</th><th class="num">Distributions</th></tr></thead><tbody>
-          ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span></td><td class="num">${money(h.distributions)}</td></tr>`).join("")}
+          <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value (net)</th><th class="num">Distributions</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead><tbody>
+          ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span></td><td class="num">${money(h.distributions)}</td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`).join("")}
           </tbody></table></div></div>`;
       })
       .join("") || '<p class="muted">No deals yet.</p>'}</div>`;
@@ -213,6 +213,7 @@
         <td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button> <button class="btn small danger" data-del-holding="${esc(h.id)}">Delete</button></td></tr>`)
       .join("");
     return `<div class="stack">
+      <div class="card"><h2>Backup</h2><p class="muted" style="margin-top:0">Everything here can be edited or deleted with no undo. Download a copy before big changes.</p><a class="btn" href="/api/export" download>Download backup (JSON)</a></div>
       <div class="card"><h2>Guided setup</h2><p class="muted" style="margin-top:0">Answer a few questions instead of filling in forms.</p>
         <div class="row-actions" style="margin-top:0"><button class="btn primary" type="button" data-wiz="add">Add an investment</button><button class="btn" type="button" data-wiz="complete">Fill in missing deal details</button></div></div>
       <div class="card"><h2>Add an investment (quick form)</h2>
@@ -238,16 +239,20 @@
             <label for="ap-type">Status</label><select id="ap-type" name="type"><option value="member">Club member</option><option value="non-member">Not a club member</option></select>
             <p class="error" data-err></p><div class="row-actions"><button class="btn primary" type="submit">Add person</button></div></form>
           <h3 style="margin-top:18px">People</h3>
-          <ul style="padding-left:18px;margin:6px 0 0">${state.people.map((p) => `<li>${esc(p.name)} - ${p.type === "member" ? "member" : "non-member"} <button class="btn small ghost" data-toggle-person="${esc(p.id)}">Switch</button></li>`).join("")}</ul></div>
+          <ul style="padding-left:18px;margin:6px 0 0">${state.people.map((p) => `<li>${esc(p.name)} - ${p.type === "member" ? "member" : "non-member"} <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button></li>`).join("")}</ul></div>
       </div>
+      <div class="card"><h2>All deals</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Held through</th><th>Terms</th><th></th></tr></thead><tbody>${state.deals.map((d) => `<tr><td>${esc(d.name)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}</td><td>${d.channel === "individual" ? "Individual" : "Power Lunch Club"}</td><td>${esc(termsText(d) || "not entered")}</td><td class="num"><button class="btn small" data-edit-deal="${esc(d.id)}">Edit</button></td></tr>`).join("")}</tbody></table></div></div>
       <div class="card"><h2>All holdings</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Person</th><th>Date</th><th class="num">Invested</th><th class="num">Distributions</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }
 
   // ---------- dialogs ----------
   const dlg = $("#dlg");
-  function openDialog(html, onSubmit) {
-    dlg.innerHTML = `<form method="dialog" id="dlgForm">${html}<p class="error" data-err></p><div class="row-actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button></div></form>`;
+  function openDialog(html, onSubmit, extra) {
+    dlg.innerHTML = `<form method="dialog" id="dlgForm">${html}<p class="error" data-err></p><div class="row-actions"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" data-close>Cancel</button>${extra ? `<button class="btn danger" type="button" data-extra style="margin-left:auto">${esc(extra.label)}</button>` : ""}</div></form>`;
     $("[data-close]", dlg).onclick = () => dlg.close();
+    if (extra) $("[data-extra]", dlg).onclick = async () => {
+      try { if (await extra.run()) { dlg.close(); await refresh(); } } catch (err) { $("[data-err]", dlg).textContent = err.message; }
+    };
     $("#dlgForm", dlg).onsubmit = async (e) => {
       e.preventDefault();
       try {
@@ -259,6 +264,28 @@
       }
     };
     dlg.showModal();
+  }
+  async function deleteDeal(id) {
+    const d = dealById(id);
+    const hs = state.holdings.filter((h) => h.dealId === id);
+    const msg = hs.length
+      ? `Delete "${d.name}" AND its ${hs.length} holding${hs.length === 1 ? "" : "s"} (${money(hs.reduce((s, h) => s + h.invested, 0))} invested)? This can't be undone.`
+      : `Delete "${d.name}"? This can't be undone.`;
+    if (!confirm(msg)) return false;
+    await api(`/api/deals/${id}${hs.length ? "?cascade=1" : ""}`, { method: "DELETE" });
+    return true;
+  }
+  function editPerson(id) {
+    const p = personById(id);
+    const n = state.holdings.filter((h) => h.personId === id).length;
+    openDialog(
+      `<h2>${esc(p.name)}</h2>
+      <label for="p-name">Name</label><input id="p-name" name="name" value="${esc(p.name)}" required>
+      <label for="p-type">Status</label><select id="p-type" name="type"><option value="member"${p.type === "member" ? " selected" : ""}>Club member</option><option value="non-member"${p.type !== "member" ? " selected" : ""}>Not a club member</option></select>
+      <p class="muted">${n ? `${n} holding${n === 1 ? "" : "s"}. To delete this person, delete or reassign their holdings first.` : "No holdings, so this person can be deleted."}</p>`,
+      (f) => api(`/api/people/${id}`, { method: "PUT", body: f }),
+      { label: "Delete person", run: async () => { if (!confirm(`Delete ${p.name}? This can't be undone.`)) return false; await api(`/api/people/${id}`, { method: "DELETE" }); return true; } },
+    );
   }
   function editDeal(id) {
     const d = dealById(id);
@@ -281,6 +308,7 @@
       <p class="muted">If a ticker and share count are both set and a live price is available, the live price overrides the manual value.</p>
       ${d.valueHistory?.length ? `<details><summary>Value history (${d.valueHistory.length})</summary><ul>${d.valueHistory.slice().reverse().map((v) => `<li>${esc(new Date(v.at).toLocaleDateString())}: ${money(v.value)} (${esc(v.source)})${v.note ? ` - ${esc(v.note)}` : ""}</li>`).join("")}</ul></details>` : ""}`,
       (f) => api(`/api/deals/${id}`, { method: "PUT", body: f }),
+      { label: "Delete deal", run: () => deleteDeal(id) },
     );
   }
   function editHolding(id) {
@@ -293,6 +321,7 @@
         <div><label for="h-amt">Invested ($)</label><input id="h-amt" name="invested" type="number" min="0" step="0.01" value="${h.invested}" required></div>
         <div><label for="h-dist">Distributions ($)</label><input id="h-dist" name="distributions" type="number" min="0" step="0.01" value="${h.distributions}"></div></div>`,
       (f) => api(`/api/holdings/${id}`, { method: "PUT", body: f }),
+      { label: "Delete holding", run: async () => { if (!confirm("Delete this holding? This can't be undone.")) return false; await api(`/api/holdings/${id}`, { method: "DELETE" }); return true; } },
     );
   }
 
@@ -382,14 +411,10 @@
     if (t.dataset.wiz === "add") window.PLC.wizard.addInvestment();
     if (t.dataset.wiz === "complete") window.PLC.wizard.completeDetails();
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);
+    if (t.dataset.editPerson) editPerson(t.dataset.editPerson);
     if (t.dataset.editHolding) editHolding(t.dataset.editHolding);
     if (t.dataset.delHolding && confirm("Delete this holding? This can't be undone.")) {
       await api(`/api/holdings/${t.dataset.delHolding}`, { method: "DELETE" }).catch((x) => alert(x.message));
-      await refresh();
-    }
-    if (t.dataset.togglePerson) {
-      const p = personById(t.dataset.togglePerson);
-      await api(`/api/people/${p.id}`, { method: "PUT", body: { name: p.name, type: p.type === "member" ? "non-member" : "member" } }).catch((x) => alert(x.message));
       await refresh();
     }
   });

@@ -45,3 +45,11 @@ missing, nobody can sign in (fails closed).
 - **Fill in missing deal details** walks through the deals that lack fee/carry terms, a real value or a
   share count, saving each deal as it goes. A deal can be skipped.
 - `POST /api/investments` validates everything before it writes anything.
+
+## Editing (admin only)
+
+Viewers see everything read-only. With the admin passcode, People, Deals and Manage show Edit buttons for
+every person, deal and holding (rename, change member status, reassign, correct amounts, change terms and
+values). People can only be deleted once they have no holdings; deleting a deal asks before also deleting its
+holdings. Manage > Backup downloads everything as JSON, since there is no undo. Passcodes are changed in
+Netlify's environment variables, not in the app.

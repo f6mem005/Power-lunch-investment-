@@ -174,3 +174,5 @@ dialog.wiz { width: min(640px, calc(100vw - 24px)); max-height: calc(100vh - 24p
 .wiz-choices { display: grid; gap: 10px; margin-top: 16px; }
 .btn.big { padding: 14px 16px; text-align: left; font-size: 16px; }
 @media (max-width: 560px) { .inv-row { grid-template-columns: 1fr 110px; } .inv-row .btn { grid-column: 1 / -1; justify-self: start; } .inv-new { grid-template-columns: 1fr; } }
+
+a.btn { display: inline-block; text-decoration: none; }

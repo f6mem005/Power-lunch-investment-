@@ -98,6 +98,13 @@ export default async (req: Request) => {
 
     // Everything below changes data and needs the admin passcode.
     if (role !== "admin") return fail("Admin access required", 403);
+    if (resource === "export" && method === "GET") {
+      const [people, deals, holdings] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding)]);
+      const stamp = new Date().toISOString().slice(0, 10);
+      return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), people, deals, holdings }, null, 2), {
+        headers: { "content-type": "application/json", "cache-control": "no-store", "content-disposition": `attachment; filename="pari-passu-backup-${stamp}.json"` },
+      });
+    }
     if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON", 415);
     const body = method === "POST" || method === "PUT" ? await req.json().catch(() => bad("Invalid JSON")) : {};
 
@@ -118,10 +125,20 @@ export default async (req: Request) => {
       if (method === "PUT" && id) {
         const p = await getOne<Person>(KINDS.person, id);
         if (!p) return fail("Not found", 404);
-        p.name = str(body.name ?? p.name, "Name", 60);
+        const name = str(body.name ?? p.name, "Name", 60);
+        const others = await listAll<Person>(KINDS.person);
+        if (others.some((o) => o.id !== p.id && o.name.toLowerCase() === name.toLowerCase())) bad("Someone else already has that name");
+        p.name = name;
         p.type = body.type === "member" ? "member" : "non-member";
         await putOne(KINDS.person, p);
         return json(p);
+      }
+      if (method === "DELETE" && id) {
+        const holdings = await listAll<Holding>(KINDS.holding);
+        const n = holdings.filter((h) => h.personId === id).length;
+        if (n) return fail(`This person still has ${n} holding${n === 1 ? "" : "s"}. Delete or reassign them first.`, 409);
+        await deleteOne(KINDS.person, id);
+        return json({ ok: true });
       }
     }
 
@@ -157,10 +174,11 @@ export default async (req: Request) => {
         return json(d);
       }
       if (method === "DELETE" && id) {
-        const holdings = await listAll<Holding>(KINDS.holding);
-        if (holdings.some((h) => h.dealId === id)) return fail("Remove this deal's holdings first", 409);
+        const mine = (await listAll<Holding>(KINDS.holding)).filter((h) => h.dealId === id);
+        if (mine.length && url.searchParams.get("cascade") !== "1") return fail("This deal still has holdings. Confirm deleting them too.", 409);
+        for (const h of mine) await deleteOne(KINDS.holding, h.id);
         await deleteOne(KINDS.deal, id);
-        return json({ ok: true });
+        return json({ ok: true, holdingsDeleted: mine.length });
       }
     }
 
