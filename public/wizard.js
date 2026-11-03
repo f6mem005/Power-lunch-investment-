@@ -94,7 +94,7 @@
     const ctx = {
       kind: S.deals.length ? "" : "new", dealId: "", name: "", channel: "club", date: P.today(),
       investors: [{ personId: "", newName: "", newType: "member", amount: "" }],
-      mgmtFeePct: "", carryPct: "", spv: "", notes: "", isPublic: false, ticker: "", shares: "",
+      mgmtFeePct: "", carryPct: "", notes: "", isPublic: false, ticker: "", shares: "",
       value: "", valueSource: "statement", valueAsOf: P.today(), result: null,
     };
     const isNew = (c) => c.kind === "new";
@@ -192,10 +192,9 @@
         read: (f, c) => { c.mgmtFeePct = val(f, "fee"); c.carryPct = val(f, "carry"); return pctErr(c.mgmtFeePct, "The fee") || pctErr(c.carryPct, "Carry"); },
       },
       {
-        show: isNew, q: "Anything else worth recording about the deal?", help: "Both optional.",
-        body: (c) => `<label for="w-spv">How big is the whole raise? ($)</label><input id="w-spv" name="spv" type="number" min="0" step="1" value="${esc(c.spv)}">
-          <label for="w-notes">Notes</label><input id="w-notes" name="notes" value="${esc(c.notes)}">`,
-        read: (f, c) => { c.spv = val(f, "spv"); c.notes = val(f, "notes").trim(); if (c.spv !== "" && !(Number(c.spv) >= 0)) return "The raise must be a number."; },
+        show: isNew, q: "Any notes about the deal?", help: "Optional.",
+        body: (c) => `<label for="w-notes">Notes</label><input id="w-notes" name="notes" value="${esc(c.notes)}">`,
+        read: (f, c) => { c.notes = val(f, "notes").trim(); },
       },
       {
         show: isNew, q: "Is it public yet?", help: "If it trades on an exchange I can pull a live price.",
@@ -235,7 +234,7 @@
             date: c.date,
             investors: c.investors.map((r) => (r.personId === "__new" ? { newPerson: { name: r.newName.trim(), type: r.newType }, invested: r.amount } : { personId: r.personId, invested: r.amount })),
           };
-          if (isNew(c)) body.deal = { name: c.name, channel: c.channel, ticker: c.ticker, sharesHeld: c.shares, spvTotalRaise: c.spv, mgmtFeePct: c.mgmtFeePct, carryPct: c.carryPct, notes: c.notes, manualValue: c.value, valueSource: c.valueSource, valueAsOf: c.valueAsOf };
+          if (isNew(c)) body.deal = { name: c.name, channel: c.channel, ticker: c.ticker, sharesHeld: c.shares, mgmtFeePct: c.mgmtFeePct, carryPct: c.carryPct, notes: c.notes, manualValue: c.value, valueSource: c.valueSource, valueAsOf: c.valueAsOf };
           else body.dealId = c.dealId;
           c.result = await P.api("/api/investments", { method: "POST", body });
           await P.refresh();
@@ -268,7 +267,7 @@
     const stepsFor = (d) => {
       const f = (ctx.by[d.id] = ctx.by[d.id] || {
         fee: d.mgmtFeePct ?? "", carry: d.carryPct ?? "", isPublic: !!d.ticker, ticker: d.ticker || "", shares: d.sharesHeld ?? "",
-        value: d.manualValue ?? "", source: d.valueSource, asOf: d.valueAsOf || P.today(), spv: d.spvTotalRaise ?? "",
+        value: d.manualValue ?? "", source: d.valueSource, asOf: d.valueAsOf || P.today(),
       });
       const skip = { label: "Skip this deal", to: skipGroup };
       return [
@@ -298,10 +297,9 @@
           help: "The value of the whole deal (all investors together), before carry. A live price overrides this once the ticker and share count are set.",
           body: () => `<div class="form-grid"><div><label for="c-val">Current value ($)</label><input id="c-val" name="value" type="number" min="0" step="0.01" value="${esc(f.value)}"></div>
             <div><label for="c-src">Where does it come from?</label><select id="c-src" name="source">${d.valueSource === "placeholder" ? `<option value="placeholder"${f.source === "placeholder" ? " selected" : ""}>Placeholder (from the spreadsheet)</option>` : ""}<option value="statement"${f.source === "statement" ? " selected" : ""}>A statement</option><option value="estimate"${f.source === "estimate" ? " selected" : ""}>My estimate</option></select></div>
-            <div><label for="c-asof">As of</label><input id="c-asof" name="asof" type="date" value="${esc(f.asOf)}"></div>
-            <div><label for="c-spv">Whole SPV raise ($, optional)</label><input id="c-spv" name="spv" type="number" min="0" step="1" value="${esc(f.spv)}"></div></div>`,
+            <div><label for="c-asof">As of</label><input id="c-asof" name="asof" type="date" value="${esc(f.asOf)}"></div></div>`,
           read: (form) => {
-            f.value = val(form, "value"); f.source = val(form, "source"); f.asOf = val(form, "asof"); f.spv = val(form, "spv");
+            f.value = val(form, "value"); f.source = val(form, "source"); f.asOf = val(form, "asof");
             if (f.value !== "" && !(Number(f.value) >= 0)) return "The value must be a number.";
             if (f.value !== "" && Number(f.value) !== d.manualValue && f.source === "placeholder") return "You changed the value - choose whether it comes from a statement or is your estimate.";
           },
@@ -311,7 +309,7 @@
             await P.api(`/api/deals/${d.id}`, {
               method: "PUT",
               body: {
-                name: cur.name, channel: cur.channel, notes: cur.notes, ticker: f.ticker, sharesHeld: f.shares, spvTotalRaise: f.spv,
+                name: cur.name, channel: cur.channel, notes: cur.notes, ticker: f.ticker, sharesHeld: f.shares,
                 mgmtFeePct: f.fee, carryPct: f.carry, manualValue: f.value, valueSource: f.source,
                 valueAsOf: changed ? f.asOf : cur.valueAsOf || "", valueNote: "Guided setup",
               },

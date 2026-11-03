@@ -12,7 +12,6 @@ export type Deal = {
   manualValue: number | null;
   valueSource: "placeholder" | "statement" | "estimate";
   valueAsOf: string | null;
-  spvTotalRaise: number | null;
   mgmtFeePct: number | null; // upfront management fee, % of amount invested (taken out of the amount invested)
   carryPct: number | null; // carry, % of profit (no hurdle)
   notes: string;

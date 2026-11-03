@@ -60,7 +60,6 @@ function buildDeal(body: any): Deal {
     manualValue: optMoney(body.manualValue, "Current value"),
     valueSource: !hasValue ? "estimate" : body.valueSource === "estimate" ? "estimate" : "statement",
     valueAsOf: !hasValue ? null : body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today(),
-    spvTotalRaise: optMoney(body.spvTotalRaise, "SPV total raise"),
     mgmtFeePct: optPct(body.mgmtFeePct, "Management fee"),
     carryPct: optPct(body.carryPct, "Carry"),
     notes: optStr(body.notes),
@@ -155,7 +154,6 @@ export default async (req: Request) => {
         d.channel = body.channel === "individual" ? "individual" : "club";
         d.ticker = ticker(body.ticker);
         d.sharesHeld = optMoney(body.sharesHeld, "Shares held");
-        d.spvTotalRaise = optMoney(body.spvTotalRaise, "SPV total raise");
         d.mgmtFeePct = optPct(body.mgmtFeePct, "Management fee");
         d.carryPct = optPct(body.carryPct, "Carry");
         d.notes = optStr(body.notes);
