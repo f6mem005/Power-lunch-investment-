@@ -9,7 +9,7 @@
   const dateFmt = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—");
   const cls = (n) => (n > 0 ? "pos" : n < 0 ? "neg" : "");
 
-  const state = { role: null, people: [], deals: [], holdings: [], prices: {}, d: null };
+  const state = { scope: "all", role: null, people: [], deals: [], holdings: [], prices: {}, d: null };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -93,18 +93,27 @@
 
   // ---------- views ----------
   function overview() {
-    const { total, people, deals } = state.d;
-    const estimated = state.deals.filter((d) => ["placeholder", "cost", "estimate"].includes(deals[d.id].basis));
+    const { deals } = state.d;
+    const f = state.scope;
+    const inScope = (dealId) => f === "all" || dealById(dealId)?.channel === f;
+    const hs = state.d.holdings.filter((h) => inScope(h.dealId));
+    const scopedDeals = state.deals.filter((d) => inScope(d.id));
+    const people = {};
+    state.people.forEach((p) => (people[p.id] = { invested: 0, value: 0 }));
+    hs.forEach((h) => { people[h.personId].invested += h.invested; people[h.personId].value += h.value; });
+    const total = hs.reduce((a, h) => ({ invested: a.invested + h.invested, value: a.value + h.value, distributions: a.distributions + h.distributions }), { invested: 0, value: 0, distributions: 0 });
+    total.gain = total.value + total.distributions - total.invested;
+    const estimated = scopedDeals.filter((d) => ["placeholder", "cost", "estimate"].includes(deals[d.id].basis));
     const kpi = (label, value, sub, c = "") => `<div class="card kpi"><div class="label">${label}</div><div class="value ${c}">${value}</div><div class="sub">${sub}</div></div>`;
     const rank = (type) => {
-      const list = state.people.filter((p) => p.type === type).sort((a, b) => people[b.id].value - people[a.id].value);
+      const list = state.people.filter((p) => p.type === type && (f === "all" || people[p.id].invested > 0)).sort((a, b) => people[b.id].value - people[a.id].value);
       const max = Math.max(1, ...list.map((p) => people[p.id].value));
       if (!list.length) return `<p class="muted">Nobody here yet.</p>`;
       return `<div class="bars">${list
         .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} value on ${money(people[p.id].invested)} invested`)}><div class="name">${esc(p.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}</div></div>`)
         .join("")}</div>`;
     };
-    const rows = state.deals
+    const rows = scopedDeals
       .slice()
       .sort((a, b) => deals[b.id].value - deals[a.id].value)
       .map((d) => {
@@ -117,9 +126,10 @@
       })
       .join("");
     return `<div class="stack">
-      ${estimated.length ? `<div class="banner" role="status"><strong>${estimated.length} of ${state.deals.length} deals</strong> use placeholder or estimated values, so gain/loss for them is not real yet. Set real values under Deals${state.role === "admin" ? "" : " (admin only)"}.</div>` : ""}
+      <div><label for="scope" style="display:inline-block;margin-right:8px">Show</label><select id="scope" style="width:auto"><option value="all"${f === "all" ? " selected" : ""}>Everything</option><option value="club"${f === "club" ? " selected" : ""}>Club deals only</option><option value="outside"${f === "outside" ? " selected" : ""}>Outside-club deals only</option></select></div>
+      ${estimated.length ? `<div class="banner" role="status"><strong>${estimated.length} of ${scopedDeals.length} deals</strong> use placeholder or estimated values, so gain/loss for them is not real yet. Set real values under Deals${state.role === "admin" ? "" : " (admin only)"}.</div>` : ""}
       <div class="kpis">
-        ${kpi("Total invested", money(total.invested), `${state.holdings.length} holdings across ${state.deals.length} deals`)}
+        ${kpi("Total invested", money(total.invested), `${hs.length} holdings across ${scopedDeals.length} deals`)}
         ${kpi("Current value", money(total.value), "Allocated pro-rata by amount invested")}
         ${kpi("Gain / loss", signed(total.gain), total.invested ? `${pct(total.gain / total.invested)} on cost (incl. distributions)` : "", cls(total.gain))}
         ${kpi("Distributions received", money(total.distributions), "Cash returned so far")}
@@ -336,6 +346,7 @@
     if (f.id === "addDeal") submitForm(f, (b) => api("/api/deals", { method: "POST", body: b }));
     if (f.id === "addPerson") submitForm(f, (b) => api("/api/people", { method: "POST", body: b }));
   });
+  view.addEventListener("change", (e) => { if (e.target.id === "scope") { state.scope = e.target.value; render(); $("#scope")?.focus(); } });
   view.addEventListener("click", async (e) => {
     const t = e.target.closest("button");
     if (!t) return;

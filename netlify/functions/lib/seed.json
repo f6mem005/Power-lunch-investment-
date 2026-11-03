@@ -13,7 +13,7 @@
     { "id": "anthropic", "name": "Anthropic", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 13500, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 3000000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
     { "id": "forterra", "name": "Forterra", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 9000, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2010000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
     { "id": "spacex-2026", "name": "SpaceX 2026", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 22500, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2700000, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
-    { "id": "xai", "name": "xAI", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 18000, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2000000, "notes": "Merged into SpaceX (SPCX). Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] }
+    { "id": "xai", "name": "xAI", "channel": "outside", "ticker": "SPCX", "sharesHeld": null, "manualValue": 18000, "valueSource": "placeholder", "valueAsOf": null, "spvTotalRaise": 2000000, "notes": "Made outside the club. Merged into SpaceX (SPCX). Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] }
   ],
   "holdings": [
     { "id": "h01", "dealId": "spacex-2024", "personId": "manny", "date": "2024-10-02", "invested": 5000, "distributions": 0 },
