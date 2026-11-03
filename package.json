@@ -1,9 +1,9 @@
 {
-  "name": "power-lunch-investments",
+  "name": "pari-passu-investments",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Power Lunch Investments - club and member investment dashboard",
+  "description": "Pari Passu Investments - club and member investment dashboard",
   "scripts": {
     "dev": "netlify dev",
     "test": "node --test test/"

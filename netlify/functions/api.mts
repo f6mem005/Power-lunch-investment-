@@ -103,7 +103,7 @@ export default async (req: Request) => {
         const deal: Deal = {
           id: newId(name),
           name,
-          channel: body.channel === "outside" ? "outside" : "club",
+          channel: body.channel === "individual" ? "individual" : "club",
           ticker: ticker(body.ticker),
           sharesHeld: optMoney(body.sharesHeld, "Shares held"),
           manualValue: optMoney(body.manualValue, "Current value"),
@@ -120,7 +120,7 @@ export default async (req: Request) => {
         const d = await getOne<Deal>(KINDS.deal, id);
         if (!d) return fail("Not found", 404);
         d.name = str(body.name ?? d.name, "Name");
-        d.channel = body.channel === "outside" ? "outside" : "club";
+        d.channel = body.channel === "individual" ? "individual" : "club";
         d.ticker = ticker(body.ticker);
         d.sharesHeld = optMoney(body.sharesHeld, "Shares held");
         d.spvTotalRaise = optMoney(body.spvTotalRaise, "SPV total raise");

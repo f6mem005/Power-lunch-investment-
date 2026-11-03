@@ -9,7 +9,7 @@
   const dateFmt = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—");
   const cls = (n) => (n > 0 ? "pos" : n < 0 ? "neg" : "");
 
-  const state = { scope: "all", role: null, people: [], deals: [], holdings: [], prices: {}, d: null };
+  const state = { scope: (() => { try { return localStorage.getItem("plc-scope") || "all"; } catch { return "all"; } })(), role: null, people: [], deals: [], holdings: [], prices: {}, d: null };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -48,7 +48,8 @@
       }
       deals[deal.id] = { invested, value, basis, note, price: q && q.price };
     });
-    const holdings = state.holdings.map((h) => {
+    const inScope = (dealId) => state.scope === "all" || dealById(dealId)?.channel === state.scope;
+    const holdings = state.holdings.filter((h) => inScope(h.dealId)).map((h) => {
       const dd = deals[h.dealId];
       const share = dd && dd.invested ? h.invested / dd.invested : 0;
       const value = dd ? dd.value * share : 0;
@@ -70,6 +71,8 @@
     state.d = { deals, holdings, people, total };
   }
 
+  const scopedDealList = () => state.deals.filter((d) => state.scope === "all" || d.channel === state.scope);
+  const channelPill = (d) => (d?.channel === "individual" ? ' <span class="pill">Individual</span>' : "");
   const personById = (id) => state.people.find((p) => p.id === id);
   const dealById = (id) => state.deals.find((d) => d.id === id);
   const color = (personId) => `var(--s${state.d.people[personId]?.slot || 9})`;
@@ -93,16 +96,10 @@
 
   // ---------- views ----------
   function overview() {
-    const { deals } = state.d;
+    const { deals, total, people } = state.d;
     const f = state.scope;
-    const inScope = (dealId) => f === "all" || dealById(dealId)?.channel === f;
-    const hs = state.d.holdings.filter((h) => inScope(h.dealId));
-    const scopedDeals = state.deals.filter((d) => inScope(d.id));
-    const people = {};
-    state.people.forEach((p) => (people[p.id] = { invested: 0, value: 0 }));
-    hs.forEach((h) => { people[h.personId].invested += h.invested; people[h.personId].value += h.value; });
-    const total = hs.reduce((a, h) => ({ invested: a.invested + h.invested, value: a.value + h.value, distributions: a.distributions + h.distributions }), { invested: 0, value: 0, distributions: 0 });
-    total.gain = total.value + total.distributions - total.invested;
+    const scopedDeals = scopedDealList();
+    const hs = state.d.holdings;
     const estimated = scopedDeals.filter((d) => ["placeholder", "cost", "estimate"].includes(deals[d.id].basis));
     const kpi = (label, value, sub, c = "") => `<div class="card kpi"><div class="label">${label}</div><div class="value ${c}">${value}</div><div class="sub">${sub}</div></div>`;
     const rank = (type) => {
@@ -120,13 +117,12 @@
         const dd = deals[d.id];
         const dist = state.d.holdings.filter((h) => h.dealId === d.id).reduce((s, h) => s + h.distributions, 0);
         const gain = dd.value + dist - dd.invested;
-        return `<tr><td><strong>${esc(d.name)}</strong>${d.channel === "outside" ? ' <span class="pill">Outside club</span>' : ""}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}</td>
+        return `<tr><td><strong>${esc(d.name)}</strong>${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}</td>
           <td class="num">${money(dd.invested)}</td><td class="num">${money(dd.value)} ${basisBadge(dd)}</td>
           <td class="num ${cls(gain)}">${signed(gain)}</td><td>${ownerBar(d.id)}</td></tr>`;
       })
       .join("");
     return `<div class="stack">
-      <div><label for="scope" style="display:inline-block;margin-right:8px">Show</label><select id="scope" style="width:auto"><option value="all"${f === "all" ? " selected" : ""}>Everything</option><option value="club"${f === "club" ? " selected" : ""}>Club deals only</option><option value="outside"${f === "outside" ? " selected" : ""}>Outside-club deals only</option></select></div>
       ${estimated.length ? `<div class="banner" role="status"><strong>${estimated.length} of ${scopedDeals.length} deals</strong> use placeholder or estimated values, so gain/loss for them is not real yet. Set real values under Deals${state.role === "admin" ? "" : " (admin only)"}.</div>` : ""}
       <div class="kpis">
         ${kpi("Total invested", money(total.invested), `${hs.length} holdings across ${scopedDeals.length} deals`)}
@@ -150,7 +146,7 @@
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((h) => {
         const d = dealById(h.dealId);
-        return `<tr><td>${esc(d?.name)}${d?.channel === "outside" ? ' <span class="pill">Outside club</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num">${money(h.value)} ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}</td></tr>`;
+        return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num">${money(h.value)} ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}</td></tr>`;
       })
       .join("");
     return `<div class="card"><div class="person-head"><h3><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}</h3>
@@ -159,8 +155,9 @@
       <tbody>${rows || '<tr><td colspan="6" class="muted">No holdings yet.</td></tr>'}</tbody></table></div></div>`;
   }
   function people() {
-    const members = state.people.filter((p) => p.type === "member");
-    const others = state.people.filter((p) => p.type !== "member");
+    const has = (p) => state.scope === "all" || state.d.people[p.id].holdings.length > 0;
+    const members = state.people.filter((p) => p.type === "member" && has(p));
+    const others = state.people.filter((p) => p.type !== "member" && has(p));
     return `<div class="stack"><div class="section-head"><h2>Club members</h2><span class="muted">${members.length} members</span></div>
       ${members.map(peopleCard).join("") || '<p class="muted">No members.</p>'}
       <div class="section-head"><h2>Not club members</h2><span class="muted">${others.length} ${others.length === 1 ? "person" : "people"}</span></div>
@@ -168,7 +165,7 @@
   }
 
   function deals() {
-    return `<div class="stack">${state.deals
+    return `<div class="stack">${scopedDealList()
       .slice()
       .sort((a, b) => state.d.deals[b.id].value - state.d.deals[a.id].value)
       .map((d) => {
@@ -178,7 +175,7 @@
         const needShares = d.ticker && !d.sharesHeld;
         const gain = dd.value + hs.reduce((s, h) => s + h.distributions, 0) - dd.invested;
         const raise = d.spvTotalRaise ? `Club owns ${pct(dd.invested / d.spvTotalRaise, 3)} of a ${money(d.spvTotalRaise)} SPV raise` : "";
-        return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${d.channel === "outside" ? '<span class="pill">Outside club</span>' : ""}${d.ticker ? `<span class="pill">${esc(d.ticker)}${q && q.price ? ` ${usd2.format(q.price)}` : ""}</span>` : ""}</h3>
+        return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${q && q.price ? ` ${usd2.format(q.price)}` : ""}</span>` : ""}</h3>
           <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Update value / details</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">Invested <strong>${money(dd.invested)}</strong> · Value <strong>${money(dd.value)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)}</span>${raise ? ` · ${raise}` : ""}</p>
           ${needShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${q && q.error ? ` (Price lookup: ${esc(q.error)})` : ""}</p>` : ""}
@@ -213,7 +210,7 @@
       <div class="grid-2">
         <div class="card"><h2>Add a new deal</h2>
           <form id="addDeal"><label for="ad-name">Deal name</label><input id="ad-name" name="name" required>
-            <div class="form-grid"><div><label for="ad-ch">Held through</label><select id="ad-ch" name="channel"><option value="club">Club</option><option value="outside">Outside the club</option></select></div>
+            <div class="form-grid"><div><label for="ad-ch">Held through</label><select id="ad-ch" name="channel"><option value="club">Power Lunch Club</option><option value="individual">Individual</option></select></div>
             <div><label for="ad-tk">Ticker (if public)</label><input id="ad-tk" name="ticker" placeholder="e.g. SPCX"></div>
             <div><label for="ad-raise">SPV total raise ($)</label><input id="ad-raise" name="spvTotalRaise" type="number" min="0" step="1"></div>
             <div><label for="ad-val">Current value ($, whole deal)</label><input id="ad-val" name="manualValue" type="number" min="0" step="0.01"></div></div>
@@ -251,7 +248,7 @@
       `<h2>${esc(d.name)}</h2>
       <div class="form-grid">
         <div><label for="e-name">Name</label><input id="e-name" name="name" value="${esc(d.name)}" required></div>
-        <div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Club</option><option value="outside"${d.channel === "outside" ? " selected" : ""}>Outside the club</option></select></div>
+        <div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Power Lunch Club</option><option value="individual"${d.channel === "individual" ? " selected" : ""}>Individual</option></select></div>
         <div><label for="e-tk">Ticker (if public)</label><input id="e-tk" name="ticker" value="${esc(d.ticker || "")}"></div>
         <div><label for="e-sh">Shares held (whole deal)</label><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}"></div>
         <div><label for="e-val">Current value ($, whole deal)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
@@ -288,6 +285,8 @@
     document.querySelectorAll("#tabs a").forEach((a) => (a.dataset.tab === tab ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
     $("#adminTab").hidden = state.role !== "admin";
     $("#roleBadge").textContent = state.role === "admin" ? "Admin" : "View only";
+    const labels = { all: "All", club: "Power Lunch Club", individual: "Individual" };
+    $("#scopeBar").innerHTML = `<span class="muted">Show</span>${Object.entries(labels).map(([k, v]) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${v}</button>`).join("")}`;
     view.innerHTML = views[tab]();
   }
 
@@ -346,7 +345,15 @@
     if (f.id === "addDeal") submitForm(f, (b) => api("/api/deals", { method: "POST", body: b }));
     if (f.id === "addPerson") submitForm(f, (b) => api("/api/people", { method: "POST", body: b }));
   });
-  view.addEventListener("change", (e) => { if (e.target.id === "scope") { state.scope = e.target.value; render(); $("#scope")?.focus(); } });
+  $("#scopeBar").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-scope]");
+    if (!b) return;
+    state.scope = b.dataset.scope;
+    try { localStorage.setItem("plc-scope", state.scope); } catch {}
+    derive();
+    render();
+    $(`#scopeBar [data-scope="${state.scope}"]`)?.focus();
+  });
   view.addEventListener("click", async (e) => {
     const t = e.target.closest("button");
     if (!t) return;

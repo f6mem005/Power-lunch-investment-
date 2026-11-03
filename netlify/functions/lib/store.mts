@@ -6,7 +6,7 @@ export type ValueEntry = { at: string; value: number | null; source: string; not
 export type Deal = {
   id: string;
   name: string;
-  channel: "club" | "outside";
+  channel: "club" | "individual";
   ticker: string | null;
   sharesHeld: number | null;
   manualValue: number | null;

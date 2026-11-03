@@ -1,7 +1,8 @@
-# Power Lunch Investments
+# Pari Passu Investments
 
-Dashboard for the Power Lunch Club's investments: every deal, what each member holds, what non-members
-hold, and current values (manual marks, or live prices for public tickers).
+Dashboard for the Power Lunch Club's investments and members' individual investments: every deal, who holds
+what, and current values (manual marks, or live prices for public tickers). A switch at the top separates
+Power Lunch Club deals from Individual deals.
 
 **Stack:** static site in `public/`, Netlify Functions in `netlify/functions/`, data in Netlify Blobs.
 No build step.
