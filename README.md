@@ -53,3 +53,10 @@ every person, deal and holding (rename, change member status, reassign, correct 
 values). People can only be deleted once they have no holdings; deleting a deal asks before also deleting its
 holdings. Manage > Backup downloads everything as JSON, since there is no undo. Passcodes are changed in
 Netlify's environment variables, not in the app.
+
+## Year-end totals
+
+The Year-end tab shows, for Power Lunch Club deals only (Individual deals are excluded), what each club member
+had invested in total at each 12/31 (and "to date" for the current year), their % of the club, and what went in
+during the year. Amounts are cost by investment date, including upfront fees. Download CSV exports all years.
+Non-member holders in club deals are listed separately and are not counted in the totals or percentages.

@@ -202,6 +202,65 @@
       .join("") || '<p class="muted">No deals yet.</p>'}</div>`;
   }
 
+  // Year-end totals: cumulative amount invested in Power Lunch Club deals at each 12/31 (cost, incl. upfront fees).
+  function yearEndData() {
+    const club = state.holdings.filter((h) => dealById(h.dealId)?.channel === "club");
+    if (!club.length) return [];
+    const thisYear = new Date().getFullYear();
+    const first = Math.min(...club.map((h) => Number(h.date.slice(0, 4))));
+    const last = Math.max(thisYear, ...club.map((h) => Number(h.date.slice(0, 4))));
+    const sum = (list) => list.reduce((s, h) => s + h.invested, 0);
+    const out = [];
+    for (let y = last; y >= first; y--) {
+      const end = `${y}-12-31`;
+      const rows = state.people
+        .filter((p) => p.type === "member" || club.some((h) => h.personId === p.id))
+        .map((p) => {
+          const mine = club.filter((h) => h.personId === p.id);
+          return { p, during: sum(mine.filter((h) => h.date.startsWith(String(y)))), cum: sum(mine.filter((h) => h.date <= end)) };
+        });
+      const members = rows.filter((r) => r.p.type === "member");
+      const others = rows.filter((r) => r.p.type !== "member" && (r.cum || r.during));
+      const total = { during: members.reduce((s, r) => s + r.during, 0), cum: members.reduce((s, r) => s + r.cum, 0) };
+      const deals = [...new Set(club.filter((h) => h.date.startsWith(String(y))).map((h) => h.dealId))].map((id) => dealById(id).name);
+      out.push({ y, current: y === thisYear, members, others, total, deals });
+    }
+    return out;
+  }
+  function yearend() {
+    const data = yearEndData();
+    if (!data.length) return `<div class="card"><h2>Year-end totals</h2><p class="muted">No Power Lunch Club investments yet.</p></div>`;
+    const cards = data
+      .map((Y) => {
+        const label = Y.current ? `to date (${dateFmt(today())})` : `at 12/31/${Y.y}`;
+        const body = Y.members
+          .map((r) => `<tr><td>${esc(r.p.name)}</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num">${Y.total.cum ? pct(r.cum / Y.total.cum, 2) : "—"}</td></tr>`)
+          .join("");
+        const others = Y.others.map((r) => `<tr class="muted"><td>${esc(r.p.name)} (non-member, not counted above)</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num"></td></tr>`).join("");
+        return `<div class="card"><div class="person-head"><h3>${Y.y}${Y.current ? " (so far)" : ""}</h3><span class="muted">${Y.deals.length ? `Deals this year: ${esc(Y.deals.join(", "))}` : "No new deals this year"}</span></div>
+          <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">Invested during ${Y.y}</th><th class="num">Total invested ${esc(label)}</th><th class="num">% of club</th></tr></thead>
+          <tbody>${body}${others}</tbody><tfoot><tr><td>Total, club members</td><td class="num">${money(Y.total.during)}</td><td class="num">${money(Y.total.cum)}</td><td class="num">100%</td></tr></tfoot></table></div></div>`;
+      })
+      .join("");
+    return `<div class="stack"><div class="section-head"><h2>Year-end investment totals</h2><button class="btn" type="button" data-csv-yearend>Download CSV</button></div>
+      <p class="muted" style="margin:-4px 0 0">Power Lunch Club deals only. Individual deals are excluded. Amounts are cash invested (including any upfront management fee), by investment date, not current value. Built from the holdings you've entered, so confirm with your accountant before filing.</p>${cards}</div>`;
+  }
+  function yearEndCsv() {
+    const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const rows = [["Year", "Holder", "Status", "Invested during year", "Total invested at year-end (or to date)", "% of club members' total"]];
+    yearEndData().forEach((Y) => {
+      Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : ""]));
+      Y.others.forEach((r) => rows.push([Y.y, r.p.name, "non-member", r.during, r.cum, ""]));
+      rows.push([Y.y, "TOTAL (club members)", "", Y.total.during, Y.total.cum, "100.00"]);
+    });
+    const blob = new Blob([rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `pari-passu-year-end-${today()}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
   const options = (items, sel) => items.map((i) => `<option value="${esc(i.id)}"${i.id === sel ? " selected" : ""}>${esc(i.name)}</option>`).join("");
   const today = () => new Date().toISOString().slice(0, 10);
 
@@ -327,7 +386,7 @@
 
   // ---------- shell ----------
   const view = $("#view");
-  const views = { overview, people, deals, admin };
+  const views = { overview, people, deals, yearend, admin };
   function render() {
     let tab = (location.hash || "#overview").slice(1);
     if (!views[tab] || (tab === "admin" && state.role !== "admin")) tab = "overview";
@@ -337,6 +396,7 @@
     $("#roleBadge").textContent = state.role === "admin" ? "Admin" : "View only";
     const labels = { all: "All", club: "Power Lunch Club", individual: "Individual" };
     $("#scopeBar").innerHTML = `<span class="muted">Show</span>${Object.entries(labels).map(([k, v]) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${v}</button>`).join("")}`;
+    $("#scopeBar").hidden = tab === "yearend";
     view.innerHTML = views[tab]();
   }
 
@@ -410,6 +470,7 @@
     if (!t) return;
     if (t.dataset.wiz === "add") window.PLC.wizard.addInvestment();
     if (t.dataset.wiz === "complete") window.PLC.wizard.completeDetails();
+    if (t.hasAttribute("data-csv-yearend")) yearEndCsv();
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);
     if (t.dataset.editPerson) editPerson(t.dataset.editPerson);
     if (t.dataset.editHolding) editHolding(t.dataset.editHolding);
