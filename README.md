@@ -35,3 +35,13 @@ missing, nobody can sign in (fails closed).
 ## Local development
 
 `npm install`, then `netlify dev` with the three env vars set in a git-ignored `.env`.
+
+## Guided setup (admin only)
+
+- After an admin sign-in, a welcome prompt offers to add an investment or fill in missing deal details.
+- **+ Add investment** (header) and Manage > Guided setup ask one question at a time: new or existing deal,
+  name, Power Lunch Club or Individual, date, who invested and how much (new people can be added inline),
+  fee and carry, SPV raise, public ticker and shares, current value, then a review screen.
+- **Fill in missing deal details** walks through the deals that lack fee/carry terms, a real value or a
+  share count, saving each deal as it goes. A deal can be skipped.
+- `POST /api/investments` validates everything before it writes anything.

@@ -9,9 +9,9 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 const fail = (error: string, status = 400) => json({ error }, status);
 
 class BadInput extends Error {}
-const bad = (m: string): never => {
+function bad(m: string): never {
   throw new BadInput(m);
-};
+}
 
 const str = (v: unknown, name: string, max = 120) => {
   const s = String(v ?? "").trim();
@@ -45,6 +45,28 @@ const ticker = (v: unknown) => {
   if (!validSymbol(s)) bad("Ticker must be letters/numbers (e.g. SPCX)");
   return s;
 };
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+function buildDeal(body: any): Deal {
+  const name = str(body.name, "Deal name");
+  const hasValue = !(body.manualValue === "" || body.manualValue == null);
+  return {
+    id: newId(name),
+    name,
+    channel: body.channel === "individual" ? "individual" : "club",
+    ticker: ticker(body.ticker),
+    sharesHeld: optMoney(body.sharesHeld, "Shares held"),
+    manualValue: optMoney(body.manualValue, "Current value"),
+    valueSource: !hasValue ? "estimate" : body.valueSource === "estimate" ? "estimate" : "statement",
+    valueAsOf: !hasValue ? null : body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today(),
+    spvTotalRaise: optMoney(body.spvTotalRaise, "SPV total raise"),
+    mgmtFeePct: optPct(body.mgmtFeePct, "Management fee"),
+    carryPct: optPct(body.carryPct, "Carry"),
+    notes: optStr(body.notes),
+    valueHistory: [],
+  };
+}
 
 export default async (req: Request) => {
   const url = new URL(req.url);
@@ -105,22 +127,7 @@ export default async (req: Request) => {
 
     if (resource === "deals") {
       if (method === "POST") {
-        const name = str(body.name, "Name");
-        const deal: Deal = {
-          id: newId(name),
-          name,
-          channel: body.channel === "individual" ? "individual" : "club",
-          ticker: ticker(body.ticker),
-          sharesHeld: optMoney(body.sharesHeld, "Shares held"),
-          manualValue: optMoney(body.manualValue, "Current value"),
-          valueSource: body.manualValue === "" || body.manualValue == null ? "estimate" : "statement",
-          valueAsOf: body.manualValue === "" || body.manualValue == null ? null : new Date().toISOString().slice(0, 10),
-          spvTotalRaise: optMoney(body.spvTotalRaise, "SPV total raise"),
-          mgmtFeePct: optPct(body.mgmtFeePct, "Management fee"),
-          carryPct: optPct(body.carryPct, "Carry"),
-          notes: optStr(body.notes),
-          valueHistory: [],
-        };
+        const deal = buildDeal(body);
         await putOne(KINDS.deal, deal);
         return json(deal, 201);
       }
@@ -136,7 +143,8 @@ export default async (req: Request) => {
         d.carryPct = optPct(body.carryPct, "Carry");
         d.notes = optStr(body.notes);
         const nextValue = optMoney(body.manualValue, "Current value");
-        const nextSource = ["statement", "estimate"].includes(body.valueSource) ? body.valueSource : "estimate";
+        const keepPlaceholder = body.valueSource === "placeholder" && d.valueSource === "placeholder" && nextValue === d.manualValue;
+        const nextSource = ["statement", "estimate"].includes(body.valueSource) ? body.valueSource : keepPlaceholder ? "placeholder" : "estimate";
         if (nextValue !== d.manualValue || nextSource !== d.valueSource) {
           d.valueHistory = [...(d.valueHistory ?? []), { at: new Date().toISOString(), value: d.manualValue, source: d.valueSource, note: optStr(body.valueNote, 200) }].slice(-50);
           d.manualValue = nextValue;
@@ -154,6 +162,51 @@ export default async (req: Request) => {
         await deleteOne(KINDS.deal, id);
         return json({ ok: true });
       }
+    }
+
+    // Guided "add investment": validates everything first, then writes (new people, new deal, holdings).
+    if (resource === "investments" && method === "POST") {
+      const [people, deals] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal)]);
+      const date = dateStr(body.date, "Investment date");
+      let deal: Deal | undefined;
+      let isNewDeal = false;
+      if (body.dealId) {
+        deal = deals.find((d) => d.id === body.dealId);
+        if (!deal) bad("Unknown deal");
+      } else {
+        deal = buildDeal(body.deal ?? {});
+        isNewDeal = true;
+        if (deals.some((d) => d.name.toLowerCase() === deal!.name.toLowerCase())) bad("A deal with that name already exists - choose it as an existing deal instead");
+      }
+      const investors: any[] = Array.isArray(body.investors) ? body.investors : [];
+      if (!investors.length) bad("Add at least one investor");
+      if (investors.length > 40) bad("Too many investors in one go");
+      const known = [...people];
+      const newPeople: Person[] = [];
+      const seen = new Set<string>();
+      const holdings: Holding[] = [];
+      for (const inv of investors) {
+        let person: Person | undefined;
+        if (inv.newPerson) {
+          const name = str(inv.newPerson.name, "Name", 60);
+          if (known.some((p) => p.name.toLowerCase() === name.toLowerCase())) bad(`${name} already exists - pick them from the list instead`);
+          person = { id: newId(name), name, type: inv.newPerson.type === "member" ? "member" : "non-member", order: Math.max(0, ...known.map((p) => p.order)) + 1 };
+          known.push(person);
+          newPeople.push(person);
+        } else {
+          person = known.find((p) => p.id === inv.personId);
+          if (!person) bad("Choose who invested");
+        }
+        if (seen.has(person!.id)) bad(`${person!.name} is listed twice`);
+        seen.add(person!.id);
+        const invested = money(inv.invested, `${person!.name}'s amount`);
+        if (invested <= 0) bad(`${person!.name}'s amount must be more than $0`);
+        holdings.push({ id: crypto.randomUUID().slice(0, 8), dealId: deal!.id, personId: person!.id, date, invested, distributions: 0 });
+      }
+      for (const p of newPeople) await putOne(KINDS.person, p);
+      if (isNewDeal) await putOne(KINDS.deal, deal!);
+      for (const h of holdings) await putOne(KINDS.holding, h);
+      return json({ deal, holdings, newPeople }, 201);
     }
 
     if (resource === "holdings") {

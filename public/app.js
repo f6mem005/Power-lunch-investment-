@@ -213,7 +213,9 @@
         <td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button> <button class="btn small danger" data-del-holding="${esc(h.id)}">Delete</button></td></tr>`)
       .join("");
     return `<div class="stack">
-      <div class="card"><h2>Add an investment</h2>
+      <div class="card"><h2>Guided setup</h2><p class="muted" style="margin-top:0">Answer a few questions instead of filling in forms.</p>
+        <div class="row-actions" style="margin-top:0"><button class="btn primary" type="button" data-wiz="add">Add an investment</button><button class="btn" type="button" data-wiz="complete">Fill in missing deal details</button></div></div>
+      <div class="card"><h2>Add an investment (quick form)</h2>
         <form id="addHolding"><div class="form-grid">
           <div><label for="ah-deal">Deal</label><select id="ah-deal" name="dealId" required>${options(state.deals)}</select></div>
           <div><label for="ah-person">Person</label><select id="ah-person" name="personId" required>${options(state.people)}</select></div>
@@ -270,7 +272,7 @@
         <div><label for="e-fee">Upfront mgmt fee (% of amount invested)</label><input id="e-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01" value="${d.mgmtFeePct ?? ""}"></div>
         <div><label for="e-carry">Carry (% of profit)</label><input id="e-carry" name="carryPct" type="number" min="0" max="100" step="0.01" value="${d.carryPct ?? ""}"></div>
         <div><label for="e-val">Current value ($, whole deal, before carry)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
-        <div><label for="e-src">Value source</label><select id="e-src" name="valueSource"><option value="statement"${d.valueSource === "statement" ? " selected" : ""}>From a statement</option><option value="estimate"${d.valueSource !== "statement" ? " selected" : ""}>Estimate</option></select></div>
+        <div><label for="e-src">Value source</label><select id="e-src" name="valueSource">${d.valueSource === "placeholder" ? '<option value="placeholder" selected>Placeholder (from spreadsheet)</option>' : ""}<option value="statement"${d.valueSource === "statement" ? " selected" : ""}>From a statement</option><option value="estimate"${d.valueSource === "estimate" ? " selected" : ""}>Estimate</option></select></div>
         <div><label for="e-asof">Value as-of date</label><input id="e-asof" name="valueAsOf" type="date" value="${d.valueAsOf || today()}"></div>
         <div><label for="e-raise">SPV total raise ($)</label><input id="e-raise" name="spvTotalRaise" type="number" min="0" step="1" value="${d.spvTotalRaise ?? ""}"></div>
       </div>
@@ -302,6 +304,7 @@
     if (!views[tab] || (tab === "admin" && state.role !== "admin")) tab = "overview";
     document.querySelectorAll("#tabs a").forEach((a) => (a.dataset.tab === tab ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
     $("#adminTab").hidden = state.role !== "admin";
+    $("#addInvBtn").hidden = state.role !== "admin";
     $("#roleBadge").textContent = state.role === "admin" ? "Admin" : "View only";
     const labels = { all: "All", club: "Power Lunch Club", individual: "Individual" };
     $("#scopeBar").innerHTML = `<span class="muted">Show</span>${Object.entries(labels).map(([k, v]) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${v}</button>`).join("")}`;
@@ -338,6 +341,7 @@
       await api("/auth/login", { method: "POST", body: { passcode: $("#passcode").value } });
       $("#passcode").value = "";
       await showApp();
+      if (state.role === "admin") window.PLC.wizard?.welcome();
     } catch (err) {
       $("#loginError").textContent = err.message;
     }
@@ -375,6 +379,8 @@
   view.addEventListener("click", async (e) => {
     const t = e.target.closest("button");
     if (!t) return;
+    if (t.dataset.wiz === "add") window.PLC.wizard.addInvestment();
+    if (t.dataset.wiz === "complete") window.PLC.wizard.completeDetails();
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);
     if (t.dataset.editHolding) editHolding(t.dataset.editHolding);
     if (t.dataset.delHolding && confirm("Delete this holding? This can't be undone.")) {
@@ -400,6 +406,9 @@
   document.addEventListener("mouseover", (e) => { const el = e.target.closest("[data-tip]"); el ? showTip(el) : (tip.hidden = true); });
   document.addEventListener("focusin", (e) => { const el = e.target.closest("[data-tip]"); el ? showTip(el) : (tip.hidden = true); });
   document.addEventListener("focusout", () => (tip.hidden = true));
+
+  $("#addInvBtn").onclick = () => window.PLC.wizard.addInvestment();
+  window.PLC = { state, api, refresh, esc, money, today, dealById, personById };
 
   // start
   api("/api/session").then((s) => (s.role ? showApp() : showLogin())).catch(showLogin);
