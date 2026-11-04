@@ -245,7 +245,7 @@
       title: "Add an investment", steps, ctx,
       done: (c) => ({
         title: "Saved.",
-        message: `${c.result.holdings.length} investor${c.result.holdings.length === 1 ? "" : "s"} added to ${c.result.deal.name} (${money(c.result.holdings.reduce((s, h) => s + h.invested, 0))}).`,
+        message: `${c.result.holdings.length} investor${c.result.holdings.length === 1 ? "" : "s"} added to ${c.result.deal.name} (${money(c.result.holdings.reduce((s, h) => s + h.invested, 0))}).${c.result.newPeople.length ? ` ${c.result.newPeople.map((p) => p.name).join(", ")} can't sign in until you set a passcode (People > Edit).` : ""}`,
         buttons: [{ label: "Add another", primary: true, run: addInvestment }, { label: "Close" }],
       }),
     });

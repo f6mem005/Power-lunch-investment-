@@ -176,3 +176,7 @@ dialog.wiz { width: min(640px, calc(100vw - 24px)); max-height: calc(100vh - 24p
 @media (max-width: 560px) { .inv-row { grid-template-columns: 1fr 110px; } .inv-row .btn { grid-column: 1 / -1; justify-self: start; } .inv-new { grid-template-columns: 1fr; } }
 
 a.btn { display: inline-block; text-decoration: none; }
+
+.previewbar { background: var(--warn-bg); color: var(--warn-ink); padding: 8px 16px; text-align: center; font-size: 14px; }
+.previewbar button { margin-left: 8px; }
+#previewSel { width: auto; padding: 4px 8px; font-size: 13px; }

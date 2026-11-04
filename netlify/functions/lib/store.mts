@@ -26,6 +26,8 @@ export type Holding = {
   distributions: number;
 };
 
+export type AuthRecord = { id: string; salt: string; hash: string; iter: number; ver: string; updatedAt: string };
+
 export const KINDS = { person: "people", deal: "deals", holding: "holdings" } as const;
 
 // Strong consistency so an admin sees their own edits immediately.
@@ -60,3 +62,7 @@ export async function ensureSeeded() {
   for (const h of seed.holdings) await s.setJSON(`holdings/${h.id}`, h, { onlyIfNew: true });
   await s.setJSON("meta/seeded", { at: new Date().toISOString(), source: "Power Lunch Club Investments (Google Sheet)" });
 }
+
+export const getAuth = (personId: string) => getOne<AuthRecord>("auth", personId);
+export const putAuth = (rec: AuthRecord) => putOne("auth", rec);
+export const deleteAuth = (personId: string) => deleteOne("auth", personId);

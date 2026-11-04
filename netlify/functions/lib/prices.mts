@@ -45,3 +45,16 @@ export async function getQuotes(symbols: string[]): Promise<Record<string, Quote
   );
   return out;
 }
+
+// Cached quotes only (never calls the provider), so loading the dashboard stays fast.
+export async function cachedQuotes(symbols: string[]): Promise<Record<string, Quote>> {
+  const s = store();
+  const out: Record<string, Quote> = {};
+  await Promise.all(
+    [...new Set(symbols.filter(validSymbol))].map(async (sym) => {
+      const c = (await s.get(`cache/price/${sym}`, { type: "json" })) as Quote | null;
+      if (c) out[sym] = c;
+    }),
+  );
+  return out;
+}

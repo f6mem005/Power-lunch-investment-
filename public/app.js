@@ -9,7 +9,10 @@
   const dateFmt = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—");
   const cls = (n) => (n > 0 ? "pos" : n < 0 ? "neg" : "");
 
-  const state = { scope: (() => { try { return localStorage.getItem("plc-scope") || "all"; } catch { return "all"; } })(), role: null, people: [], deals: [], holdings: [], prices: {}, d: null };
+  const state = {
+    scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
+    role: null, me: null, previewOf: null, passcodes: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
+  };
 
   async function api(path, opts = {}) {
     const res = await fetch(path, {
@@ -25,54 +28,30 @@
   }
 
   // ---------- derived numbers ----------
+  // The server has already filtered everything to what this person may see and computed each holding's value,
+  // so this only adds things up.
+  function dealNote(d) {
+    if (d.basis === "live") return d.sharesHeld && d.price ? `${d.sharesHeld.toLocaleString()} sh × ${usd2.format(d.price)} (${d.ticker})` : "Live market price";
+    if (d.basis === "placeholder") return "Placeholder from original spreadsheet (90% of cost)";
+    if (d.basis === "cost") return "No value entered yet - shown at cost";
+    return `${d.basis === "statement" ? "From statement" : "Estimate"}${d.valueAsOf ? `, as of ${dateFmt(d.valueAsOf)}` : ""}`;
+  }
   function derive() {
-    const dealInvested = {};
-    state.holdings.forEach((h) => (dealInvested[h.dealId] = (dealInvested[h.dealId] || 0) + h.invested));
     const deals = {};
-    state.deals.forEach((deal) => {
-      const invested = dealInvested[deal.id] || 0;
-      const q = deal.ticker ? state.prices[deal.ticker] : null;
-      let value, basis, note;
-      if (deal.ticker && deal.sharesHeld && q && q.price) {
-        value = deal.sharesHeld * q.price;
-        basis = "live";
-        note = `${deal.sharesHeld.toLocaleString()} sh × ${usd2.format(q.price)} (${deal.ticker})`;
-      } else if (deal.manualValue != null) {
-        value = deal.manualValue;
-        basis = deal.valueSource;
-        note = deal.valueSource === "placeholder" ? "Placeholder from original spreadsheet (90% of cost)" : `${deal.valueSource === "statement" ? "From statement" : "Estimate"}${deal.valueAsOf ? `, as of ${dateFmt(deal.valueAsOf)}` : ""}`;
-      } else {
-        value = invested;
-        basis = "cost";
-        note = "No value entered yet - shown at cost";
-      }
-      deals[deal.id] = { invested, value, basis, note, price: q && q.price };
+    state.deals.forEach((d) => (deals[d.id] = { invested: 0, value: 0, net: 0, carry: 0, fee: 0, dist: 0, basis: d.basis, price: d.price, note: dealNote(d) }));
+    state.holdings.forEach((h) => {
+      const dd = deals[h.dealId];
+      if (!dd) return;
+      dd.invested += h.invested; dd.value += h.gross; dd.net += h.value; dd.carry += h.carry; dd.fee += h.fee; dd.dist += h.distributions;
     });
     const inScope = (dealId) => state.scope === "all" || dealById(dealId)?.channel === state.scope;
-    const holdings = state.holdings.filter((h) => inScope(h.dealId)).map((h) => {
-      const dd = deals[h.dealId];
-      const share = dd && dd.invested ? h.invested / dd.invested : 0;
-      const deal = dealById(h.dealId);
-      const gross = dd ? dd.value * share : 0;
-      // Management fee comes out of the amount invested; carry is a % of profit with no hurdle.
-      const fee = h.invested * ((deal?.mgmtFeePct || 0) / 100);
-      const carry = ((deal?.carryPct || 0) / 100) * Math.max(0, gross + h.distributions - h.invested);
-      const value = gross - carry;
-      return { ...h, share, gross, fee, carry, value, gain: value + h.distributions - h.invested };
-    });
-    Object.values(deals).forEach((d) => Object.assign(d, { net: 0, carry: 0, fee: 0, dist: 0 }));
-    holdings.forEach((h) => { const d = deals[h.dealId]; d.net += h.value; d.carry += h.carry; d.fee += h.fee; d.dist += h.distributions; });
+    const holdings = state.holdings.filter((h) => inScope(h.dealId)).map((h) => ({ ...h, gain: h.value + h.distributions - h.invested }));
     const people = {};
-    state.people.forEach((p, i) => (people[p.id] = { invested: 0, value: 0, gross: 0, carry: 0, fee: 0, distributions: 0, holdings: [], slot: Math.min(i + 1, 9) }));
+    state.people.forEach((p) => (people[p.id] = { invested: 0, value: 0, gross: 0, carry: 0, fee: 0, distributions: 0, holdings: [], slot: Math.min(p.order || 9, 9) }));
     holdings.forEach((h) => {
       const t = people[h.personId];
       if (!t) return;
-      t.invested += h.invested;
-      t.value += h.value;
-      t.gross += h.gross;
-      t.carry += h.carry;
-      t.fee += h.fee;
-      t.distributions += h.distributions;
+      t.invested += h.invested; t.value += h.value; t.gross += h.gross; t.carry += h.carry; t.fee += h.fee; t.distributions += h.distributions;
       t.holdings.push(h);
     });
     Object.values(people).forEach((t) => (t.gain = t.value + t.distributions - t.invested));
@@ -97,6 +76,7 @@
   }
 
   function ownerBar(dealId) {
+    if (dealById(dealId)?.partial) return "";
     const hs = state.d.holdings.filter((h) => h.dealId === dealId).sort((a, b) => b.invested - a.invested);
     const total = hs.reduce((s, h) => s + h.invested, 0);
     if (!total) return "";
@@ -116,13 +96,15 @@
     const noTerms = scopedDeals.filter((d) => d.mgmtFeePct == null && d.carryPct == null);
     const kpi = (label, value, sub, c = "") => `<div class="card kpi"><div class="label">${label}</div><div class="value ${c}">${value}</div><div class="sub">${sub}</div></div>`;
     const rank = (type) => {
+      const empty = !state.people.some((p) => p.type === type && (f === "all" || people[p.id].invested > 0));
+      if (empty) return "";
       const list = state.people.filter((p) => p.type === type && (f === "all" || people[p.id].invested > 0)).sort((a, b) => people[b.id].value - people[a.id].value);
       const max = Math.max(1, ...list.map((p) => people[p.id].value));
-      if (!list.length) return `<p class="muted">Nobody here yet.</p>`;
       return `<div class="bars">${list
         .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} value on ${money(people[p.id].invested)} invested`)}><div class="name">${esc(p.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}</div></div>`)
         .join("")}</div>`;
     };
+    const showWho = scopedDeals.some((d) => !d.partial);
     const rows = scopedDeals
       .slice()
       .sort((a, b) => deals[b.id].net - deals[a.id].net)
@@ -131,11 +113,11 @@
         const gain = dd.net + dd.dist - dd.invested;
         return `<tr><td><strong>${esc(d.name)}</strong>${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}${termsText(d) ? `<div class="muted small">${esc(termsText(d))}</div>` : ""}</td>
           <td class="num">${money(dd.invested)}</td><td class="num"><span ${tipAttr(`Gross ${money(dd.value)} − carry ${money(dd.carry)} = ${money(dd.net)} net`)}>${money(dd.net)}</span> ${basisBadge(dd)}</td>
-          <td class="num ${cls(gain)}">${signed(gain)}</td><td>${ownerBar(d.id)}</td></tr>`;
+          <td class="num ${cls(gain)}">${signed(gain)}</td>${showWho ? `<td>${ownerBar(d.id)}</td>` : ""}</tr>`;
       })
       .join("");
     return `<div class="stack">
-      ${estimated.length ? `<div class="banner" role="status"><strong>${estimated.length} of ${scopedDeals.length} deals</strong> use placeholder or estimated values, so gain/loss for them is not real yet. Set real values under Deals${state.role === "admin" ? "" : " (admin only)"}.</div>` : ""}
+      ${estimated.length ? `<div class="banner" role="status"><strong>${estimated.length} of ${scopedDeals.length} deals</strong> use placeholder or estimated values, so gain/loss for them is not real yet. ${state.role === "admin" ? "Set real values under Deals." : ""}</div>` : ""}
       ${noTerms.length ? `<div class="banner" role="status">Fee and carry terms are not entered for <strong>${noTerms.length} of ${scopedDeals.length} deals</strong>, so their values are shown before carry.</div>` : ""}
       <div class="kpis">
         ${kpi("Total invested", money(total.invested), `${hs.length} holdings across ${scopedDeals.length} deals${total.fee ? ` · ${money(total.fee)} of it is upfront fees` : ""}`)}
@@ -144,11 +126,11 @@
         ${kpi("Distributions received", money(total.distributions), "Cash returned so far")}
       </div>
       <div class="grid-2">
-        <div class="card"><h2>Club members - net value</h2>${rank("member")}</div>
-        <div class="card"><h2>Not club members - net value</h2>${rank("non-member")}</div>
+        ${rank("member") ? `<div class="card"><h2>Club members - net value</h2>${rank("member")}</div>` : ""}
+        ${rank("non-member") ? `<div class="card"><h2>${state.me && state.me.type === "non-member" ? "Your investments - net value" : "Not club members - net value"}</h2>${rank("non-member")}</div>` : ""}
       </div>
-      <div class="card"><h2>Every investment</h2>${legend()}
-        <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th><th class="num">Value (net of carry)</th><th class="num">Gain / loss</th><th>Who holds it</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">No deals yet.</td></tr>'}</tbody></table></div>
+      <div class="card"><h2>${showWho ? "Every investment" : "Your investments"}</h2>${showWho ? legend() : ""}
+        <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th><th class="num">Value (net of carry)</th><th class="num">Gain / loss</th>${showWho ? "<th>Who holds it</th>" : ""}</tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Nothing to show here yet.</td></tr>'}</tbody></table></div>
       </div></div>`;
   }
 
@@ -184,18 +166,16 @@
       .map((d) => {
         const dd = state.d.deals[d.id];
         const hs = state.d.holdings.filter((h) => h.dealId === d.id).sort((a, b) => b.invested - a.invested);
-        const q = d.ticker ? state.prices[d.ticker] : null;
-        const needShares = d.ticker && !d.sharesHeld;
         const gain = dd.net + dd.dist - dd.invested;
-        return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${q && q.price ? ` ${usd2.format(q.price)}` : ""}</span>` : ""}</h3>
+        return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
           <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)}</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
-          ${needShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${q && q.error ? ` (Price lookup: ${esc(q.error)})` : ""}</p>` : ""}
-          ${d.ticker && q && !q.price ? `<p class="muted">Live price unavailable: ${esc(q.error || "no data")}</p>` : ""}
+          ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError ? ` (Price lookup: ${esc(d.priceError)})` : ""}</p>` : ""}
+          ${d.ticker && !d.needsShares && !d.price ? `<p class="muted">Live price unavailable: ${esc(d.priceError || "no data")}</p>` : ""}
           ${d.notes ? `<p class="muted">${esc(d.notes)}</p>` : ""}
-          <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value (net)</th><th class="num">Distributions</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead><tbody>
-          ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td><td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span></td><td class="num">${money(h.distributions)}</td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`).join("")}
+          <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th>${d.partial ? "" : '<th class="num">Share</th>'}<th class="num">Value (net)</th><th class="num">Distributions</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead><tbody>
+          ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td>${d.partial ? "" : `<td class="num">${pct(h.share)}</td>`}<td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span></td><td class="num">${money(h.distributions)}</td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`).join("")}
           </tbody></table></div></div>`;
       })
       .join("") || '<p class="muted">No deals yet.</p>'}</div>`;
@@ -296,7 +276,7 @@
             <label for="ap-type">Status</label><select id="ap-type" name="type"><option value="member">Club member</option><option value="non-member">Not a club member</option></select>
             <p class="error" data-err></p><div class="row-actions"><button class="btn primary" type="submit">Add person</button></div></form>
           <h3 style="margin-top:18px">People</h3>
-          <ul style="padding-left:18px;margin:6px 0 0">${state.people.map((p) => `<li>${esc(p.name)} - ${p.type === "member" ? "member" : "non-member"} <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button></li>`).join("")}</ul></div>
+          <ul style="padding-left:18px;margin:6px 0 0">${state.people.map((p) => `<li>${esc(p.name)} - ${p.type === "member" ? "member" : "non-member"} · ${state.passcodes[p.id] ? "can sign in" : "no sign-in yet"} <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button></li>`).join("")}</ul></div>
       </div>
       <div class="card"><h2>All deals</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Held through</th><th>Terms</th><th></th></tr></thead><tbody>${state.deals.map((d) => `<tr><td>${esc(d.name)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}</td><td>${d.channel === "individual" ? "Individual" : "Power Lunch Club"}</td><td>${esc(termsText(d) || "not entered")}</td><td class="num"><button class="btn small" data-edit-deal="${esc(d.id)}">Edit</button></td></tr>`).join("")}</tbody></table></div></div>
       <div class="card"><h2>All holdings</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Person</th><th>Date</th><th class="num">Invested</th><th class="num">Distributions</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
@@ -339,10 +319,25 @@
       `<h2>${esc(p.name)}</h2>
       <label for="p-name">Name</label><input id="p-name" name="name" value="${esc(p.name)}" required>
       <label for="p-type">Status</label><select id="p-type" name="type"><option value="member"${p.type === "member" ? " selected" : ""}>Club member</option><option value="non-member"${p.type !== "member" ? " selected" : ""}>Not a club member</option></select>
+      <label for="p-code">Sign-in passcode</label>
+      <div class="inv-row" style="grid-template-columns:1fr auto auto"><input id="p-code" name="passcode" autocomplete="off" spellcheck="false" placeholder="${state.passcodes[id] ? "Set. Type a new one to replace it" : "Not set. This person can't sign in yet"}"><button type="button" class="btn small" data-gen>Generate</button>${state.passcodes[id] ? '<button type="button" class="btn small danger" data-rmcode>Remove</button>' : ""}</div>
+      <p class="muted">At least 8 characters. It's stored scrambled and can't be shown again, so copy it before saving and send it to ${esc(p.name)} privately. Changing or removing it signs them out. They sign in with their name (${esc(p.name)}) and this passcode.</p>
       <p class="muted">${n ? `${n} holding${n === 1 ? "" : "s"}. To delete this person, delete or reassign their holdings first.` : "No holdings, so this person can be deleted."}</p>`,
-      (f) => api(`/api/people/${id}`, { method: "PUT", body: f }),
+      async (f) => {
+        await api(`/api/people/${id}`, { method: "PUT", body: { name: f.name, type: f.type } });
+        if (f.passcode) await api(`/api/people/${id}/passcode`, { method: "PUT", body: { passcode: f.passcode } });
+      },
       { label: "Delete person", run: async () => { if (!confirm(`Delete ${p.name}? This can't be undone.`)) return false; await api(`/api/people/${id}`, { method: "DELETE" }); return true; } },
     );
+    $("[data-gen]", dlg).onclick = () => {
+      const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const bytes = crypto.getRandomValues(new Uint8Array(12));
+      $("#p-code", dlg).value = [...bytes].map((b) => chars[b % chars.length]).join("");
+    };
+    $("[data-rmcode]", dlg)?.addEventListener("click", async () => {
+      if (!confirm(`Remove ${p.name}'s sign-in? They won't be able to sign in until you set a new passcode.`)) return;
+      try { await api(`/api/people/${id}/passcode`, { method: "DELETE" }); dlg.close(); await refresh(); } catch (err) { $("[data-err]", dlg).textContent = err.message; }
+    });
   }
   function editDeal(id) {
     const d = dealById(id);
@@ -384,27 +379,49 @@
   // ---------- shell ----------
   const view = $("#view");
   const views = { overview, people, deals, yearend, admin };
+  const isAdminSession = () => state.role === "admin" || !!state.previewOf;
+  const canYearEnd = () => state.role === "admin" || state.me?.type === "member";
+  function allowedScopes() {
+    if (state.role === "admin") return { all: "All", club: "Power Lunch Club", individual: "Individual" };
+    if (state.me?.type === "member") return { club: "Power Lunch Club", individual: "My individual investments" };
+    return { all: "My investments" };
+  }
   function render() {
     let tab = (location.hash || "#overview").slice(1);
-    if (!views[tab] || (tab === "admin" && state.role !== "admin")) tab = "overview";
+    if (!views[tab] || (tab === "admin" && state.role !== "admin") || (tab === "yearend" && !canYearEnd())) tab = "overview";
+    const scopes = allowedScopes();
+    if (!scopes[state.scope]) { state.scope = Object.keys(scopes)[0]; derive(); }
     document.querySelectorAll("#tabs a").forEach((a) => (a.dataset.tab === tab ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
     $("#adminTab").hidden = state.role !== "admin";
     $("#addInvBtn").hidden = state.role !== "admin";
-    $("#roleBadge").textContent = state.role === "admin" ? "Admin" : "View only";
-    const labels = { all: "All", club: "Power Lunch Club", individual: "Individual" };
-    $("#scopeBar").innerHTML = `<span class="muted">Show</span>${Object.entries(labels).map(([k, v]) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${v}</button>`).join("")}`;
-    $("#scopeBar").hidden = tab === "yearend";
+    document.querySelector('#tabs a[data-tab="yearend"]').hidden = !canYearEnd();
+    $("#roleBadge").textContent = state.role === "admin" ? "Admin" : state.me ? `Signed in as ${state.me.name}` : "";
+    const sel = $("#previewSel");
+    sel.hidden = !isAdminSession();
+    if (isAdminSession()) {
+      sel.innerHTML = `<option value="">Admin view</option>${state.adminPeople.map((p) => `<option value="${esc(p.id)}"${state.previewOf === p.id ? " selected" : ""}>Preview as ${esc(p.name)}</option>`).join("")}`;
+    }
+    const bar = $("#previewBar");
+    bar.hidden = !state.previewOf;
+    if (state.previewOf) bar.innerHTML = `Previewing exactly what <strong>${esc(state.me?.name || "this person")}</strong> sees. Read-only. <button class="btn small" type="button" data-exit-preview>Back to admin view</button>`;
+    const keys = Object.keys(scopes);
+    $("#scopeBar").innerHTML = `<span class="muted">Show</span>${keys.map((k) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${esc(scopes[k])}</button>`).join("")}`;
+    $("#scopeBar").hidden = tab === "yearend" || keys.length < 2;
     view.innerHTML = views[tab]();
   }
 
-  async function refresh() {
-    const data = await api("/api/data");
-    Object.assign(state, { role: data.role, people: data.people, deals: data.deals, holdings: data.holdings });
+  async function refresh(afterPrices = false) {
+    const data = await api(`/api/data${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`);
+    Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, quotes: data.quotes || {} });
+    if (data.role === "admin") Object.assign(state, { adminPeople: data.people, passcodes: data.passcodes || {} });
+    if (!state.scope || !allowedScopes()[state.scope]) state.scope = Object.keys(allowedScopes())[0];
     derive();
     render();
-    // Prices load separately so a slow quote provider never blocks the page.
-    if (state.deals.some((d) => d.ticker)) {
-      api("/api/prices").then((p) => { state.prices = p; derive(); render(); }).catch(() => {});
+    // Live prices refresh separately so a slow quote provider never blocks the page; reload once if any price moved.
+    if (!afterPrices && state.deals.some((d) => d.ticker)) {
+      api(`/api/prices${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`).then((q) => {
+        if (Object.keys(q).some((k) => (q[k].price ?? null) !== (state.quotes[k]?.price ?? null))) refresh(true);
+      }).catch(() => {});
     }
   }
 
@@ -424,15 +441,16 @@
     e.preventDefault();
     $("#loginError").textContent = "";
     try {
-      await api("/auth/login", { method: "POST", body: { passcode: $("#passcode").value } });
+      await api("/auth/login", { method: "POST", body: { name: $("#loginName").value, passcode: $("#passcode").value } });
       $("#passcode").value = "";
+      state.previewOf = null;
       await showApp();
       if (state.role === "admin") window.PLC.wizard?.welcome();
     } catch (err) {
       $("#loginError").textContent = err.message;
     }
   });
-  $("#logoutBtn").onclick = async () => { await api("/api/logout", { method: "POST", body: {} }).catch(() => {}); state.role = null; showLogin(); };
+  $("#logoutBtn").onclick = async () => { await api("/api/logout", { method: "POST", body: {} }).catch(() => {}); Object.assign(state, { role: null, me: null, previewOf: null }); showLogin(); };
   $("#themeBtn").onclick = () => {
     const dark = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
     document.documentElement.dataset.theme = dark ? "light" : "dark";
@@ -490,6 +508,8 @@
   document.addEventListener("focusin", (e) => { const el = e.target.closest("[data-tip]"); el ? showTip(el) : (tip.hidden = true); });
   document.addEventListener("focusout", () => (tip.hidden = true));
 
+  $("#previewSel").addEventListener("change", (e) => { state.previewOf = e.target.value || null; refresh(); });
+  document.addEventListener("click", (e) => { if (e.target.closest("[data-exit-preview]")) { state.previewOf = null; refresh(); } });
   $("#addInvBtn").onclick = () => window.PLC.wizard.addInvestment();
   window.PLC = { state, api, refresh, esc, money, today, dealById, personById };
 

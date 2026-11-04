@@ -1,8 +1,11 @@
 import type { Config } from "@netlify/functions";
-import { clearCookie, getRole } from "./lib/auth.mts";
-import { getQuotes, validSymbol } from "./lib/prices.mts";
-import { KINDS, deleteOne, ensureSeeded, getOne, listAll, putOne } from "./lib/store.mts";
-import type { Deal, Holding, Person } from "./lib/store.mts";
+import { clearCookie, hashPasscode, readSession } from "./lib/auth.mts";
+import type { Session } from "./lib/auth.mts";
+import { cachedQuotes, getQuotes, validSymbol } from "./lib/prices.mts";
+import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne } from "./lib/store.mts";
+import type { AuthRecord, Deal, Holding, Person } from "./lib/store.mts";
+import { buildView } from "./lib/view.mts";
+import type { Viewer } from "./lib/view.mts";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
@@ -72,31 +75,58 @@ export default async (req: Request) => {
   const parts = url.pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
   const [resource, id] = parts;
   const method = req.method;
-  const role = await getRole(req);
+  // Who is calling? Admin, or a person whose stored sign-in is still the one the cookie was issued for.
+  let session: Session | null = await readSession(req);
+  let me: Person | null = null;
+  if (session?.kind === "person") {
+    const [person, rec] = await Promise.all([getOne<Person>(KINDS.person, session.personId), getAuth(session.personId)]);
+    if (person && rec && rec.ver === session.ver) me = person;
+    else session = null; // passcode was changed/removed, or the person was deleted
+  }
+  const isAdmin = session?.kind === "admin";
 
-  if (resource === "session" && method === "GET") return json({ role });
+  if (resource === "session" && method === "GET") {
+    return json(session ? { role: isAdmin ? "admin" : "person", name: me?.name ?? null, type: me?.type ?? null } : { role: null });
+  }
   if (resource === "logout" && method === "POST") return json({ ok: true }, 200, { "set-cookie": clearCookie() });
-  if (!role) return fail("Please sign in", 401);
+  if (!session) return fail("Please sign in", 401);
+
+  const loadView = async (viewer: Viewer) => {
+    const [people, deals, holdings] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding)]);
+    const quotes = await cachedQuotes(deals.map((d) => d.ticker).filter(Boolean) as string[]);
+    return buildView(viewer, people, deals, holdings, quotes);
+  };
+  // The admin can preview exactly what a given person sees (?as=<personId>).
+  const viewerFor = async (): Promise<Viewer> => {
+    const as = url.searchParams.get("as");
+    if (as && isAdmin) {
+      const p = await getOne<Person>(KINDS.person, as);
+      if (!p) bad("Unknown person");
+      return { kind: "person", person: p! };
+    }
+    return isAdmin ? { kind: "admin" } : { kind: "person", person: me! };
+  };
 
   try {
     if (resource === "data" && method === "GET") {
       await ensureSeeded();
-      const [people, deals, holdings] = await Promise.all([
-        listAll<Person>(KINDS.person),
-        listAll<Deal>(KINDS.deal),
-        listAll<Holding>(KINDS.holding),
-      ]);
-      people.sort((a, b) => a.order - b.order);
-      return json({ role, people, deals, holdings });
+      const view = await loadView(await viewerFor());
+      const extra: Record<string, unknown> = {};
+      if (isAdmin && !url.searchParams.get("as")) {
+        const auth = await listAll<AuthRecord>("auth");
+        extra.passcodes = Object.fromEntries(auth.map((a) => [a.id, a.updatedAt]));
+      }
+      return json({ ...view, previewOf: url.searchParams.get("as") && isAdmin ? url.searchParams.get("as") : null, ...extra });
     }
 
     if (resource === "prices" && method === "GET") {
-      const deals = await listAll<Deal>(KINDS.deal);
-      return json(await getQuotes(deals.map((d) => d.ticker).filter(Boolean) as string[]));
+      const view = await loadView(await viewerFor()); // only tickers this person is allowed to see
+      const tickers = view.deals.map((d) => d.ticker).filter(Boolean) as string[];
+      return json(await getQuotes(tickers));
     }
 
     // Everything below changes data and needs the admin passcode.
-    if (role !== "admin") return fail("Admin access required", 403);
+    if (!isAdmin) return fail("Admin access required", 403);
     if (resource === "export" && method === "GET") {
       const [people, deals, holdings] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding)]);
       const stamp = new Date().toISOString().slice(0, 10);
@@ -108,6 +138,19 @@ export default async (req: Request) => {
     const body = method === "POST" || method === "PUT" ? await req.json().catch(() => bad("Invalid JSON")) : {};
 
     if (resource === "people") {
+      // Personal sign-in passcode for one person (admin sets or removes it; it is stored hashed and never shown again).
+      if (id && parts[2] === "passcode" && method === "PUT") {
+        if (!(await getOne<Person>(KINDS.person, id))) return fail("Not found", 404);
+        const code = String(body.passcode ?? "");
+        if (code.length < 8 || code.length > 100) bad("Passcode must be at least 8 characters");
+        const rec: AuthRecord = { id, ...(await hashPasscode(code)), ver: crypto.randomUUID().replace(/-/g, "").slice(0, 12), updatedAt: new Date().toISOString() };
+        await putAuth(rec); // new `ver` signs out any session this person already had
+        return json({ ok: true, updatedAt: rec.updatedAt });
+      }
+      if (id && parts[2] === "passcode" && method === "DELETE") {
+        await deleteAuth(id);
+        return json({ ok: true });
+      }
       if (method === "POST") {
         const existing = await listAll<Person>(KINDS.person);
         const name = str(body.name, "Name", 60);
@@ -137,6 +180,7 @@ export default async (req: Request) => {
         const n = holdings.filter((h) => h.personId === id).length;
         if (n) return fail(`This person still has ${n} holding${n === 1 ? "" : "s"}. Delete or reassign them first.`, 409);
         await deleteOne(KINDS.person, id);
+        await deleteAuth(id);
         return json({ ok: true });
       }
     }

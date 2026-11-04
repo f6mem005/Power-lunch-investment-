@@ -12,12 +12,26 @@ No build step.
 | Name | Required | Purpose |
 |---|---|---|
 | `SESSION_SECRET` | yes | Random string (16+ chars) that signs login cookies |
-| `VIEWER_PASSCODE` | yes | Shared passcode for read-only access |
-| `ADMIN_PASSCODE` | yes | Passcode that can add investments and update values |
+| `ADMIN_PASSCODE` | yes | The admin's passcode (sign in with the name left blank) |
 | `FINNHUB_API_KEY` | no | Live prices via Finnhub. Without it, Stooq's free daily quotes are used |
 
-Mark the three secrets as secret and scope them to **Functions**. If any of the three required values is
-missing, nobody can sign in (fails closed).
+Mark the secrets as secret and scope them to **Functions**. If either required value is missing, nobody can
+sign in (fails closed). There is no shared viewer passcode: everyone else signs in with their own name and a
+personal passcode that the admin sets in People > Edit (stored hashed; changing or removing it signs that
+person out).
+
+## Who sees what
+
+Enforced on the server (the browser is only sent what the person may see):
+
+| Signed in as | Sees |
+|---|---|
+| Admin | Everything, and can edit. "Preview as <person>" shows exactly what that person sees. |
+| Club member | Every holding in Power Lunch Club deals (all members' contributions, the Year-end tab), plus their own holdings in individual deals. Never other people's individual holdings. |
+| Non-member | Only their own holdings. No club data, no Year-end tab. |
+
+For a deal someone can only partly see, nothing that would reveal other people's amounts is sent: no deal
+total, share-of-deal %, deal value, share count, value history or notes.
 
 ## How values work
 
@@ -48,7 +62,7 @@ missing, nobody can sign in (fails closed).
 
 ## Editing (admin only)
 
-Viewers see everything read-only. With the admin passcode, People, Deals and Manage show Edit buttons for
+Everyone else is read-only. As the admin, People, Deals and Manage show Edit buttons for
 every person, deal and holding (rename, change member status, reassign, correct amounts, change terms and
 values). People can only be deleted once they have no holdings; deleting a deal asks before also deleting its
 holdings. Manage > Backup downloads everything as JSON, since there is no undo. Passcodes are changed in

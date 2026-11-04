@@ -12,9 +12,11 @@
   <section id="login" class="login" hidden>
     <form id="loginForm" class="card login-card" autocomplete="off">
       <h1>Pari Passu Investments</h1>
-      <p class="muted">Enter the passcode to continue.</p>
+      <p class="muted">Sign in with your name and the personal passcode you were given.</p>
+      <label for="loginName">Your name</label>
+      <input id="loginName" name="name" type="text" autocomplete="username" placeholder="Leave blank if you are the admin">
       <label for="passcode">Passcode</label>
-      <input id="passcode" name="passcode" type="password" required autofocus>
+      <input id="passcode" name="passcode" type="password" autocomplete="current-password" required>
       <p id="loginError" class="error" role="alert"></p>
       <button class="btn primary" type="submit">Sign in</button>
     </form>
@@ -31,12 +33,14 @@
         <a href="#admin" data-tab="admin" id="adminTab" hidden>Manage</a>
       </nav>
       <div class="actions">
+        <select id="previewSel" aria-label="Preview the dashboard as another person" hidden></select>
         <button id="addInvBtn" class="btn primary small" type="button" hidden>+ Add investment</button>
         <span id="roleBadge" class="badge"></span>
         <button id="themeBtn" class="btn ghost" type="button" aria-label="Toggle light or dark theme">Theme</button>
         <button id="logoutBtn" class="btn ghost" type="button">Sign out</button>
       </div>
     </header>
+    <div id="previewBar" class="previewbar" role="status" hidden></div>
     <div id="scopeBar" class="scopebar" role="radiogroup" aria-label="Which investments to show"></div>
     <main id="view" tabindex="-1"></main>
   </div>
