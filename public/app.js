@@ -634,6 +634,39 @@
     if (state.role && Date.now() - lastSeen > 5 * 60 * 1000 && !dlg.open && !$("#wiz").open) refresh().catch(() => {});
   });
 
+  // ---------- refresh: pull down on a touch screen, or the button in the title bar ----------
+  $("#reloadBtn").onclick = () => location.reload();
+  (() => {
+    const ptr = $("#ptr"), THRESHOLD = 64, MAX = 110;
+    let startY = 0, startX = 0, pulling = false, dist = 0, busy = false;
+    const show = (d, st) => {
+      ptr.dataset.state = st || (d >= THRESHOLD ? "ready" : "pull");
+      ptr.style.opacity = String(Math.min(1, d / 40));
+      ptr.style.transform = `translate(-50%, ${d - 56}px)`;
+      ptr.firstElementChild.style.transform = st === "loading" ? "" : `rotate(${d * 3}deg)`;
+    };
+    const reset = () => { if (busy) return; pulling = false; ptr.classList.add("snap"); show(0, "idle"); };
+    document.addEventListener("touchstart", (e) => {
+      if (busy || e.touches.length !== 1 || window.scrollY > 0 || e.target.closest("dialog") || $("#app").hidden) return;
+      startY = e.touches[0].clientY; startX = e.touches[0].clientX; pulling = true; dist = 0; ptr.classList.remove("snap");
+    }, { passive: true });
+    document.addEventListener("touchmove", (e) => {
+      if (!pulling) return;
+      const dy = e.touches[0].clientY - startY, dx = e.touches[0].clientX - startX;
+      if (dy <= 0 || window.scrollY > 0 || Math.abs(dx) > dy) { if (dist === 0) pulling = false; return; } // an ordinary scroll or a sideways swipe
+      e.preventDefault();                       // we own this gesture: no native bounce
+      dist = Math.min(MAX, dy * 0.5);
+      show(dist);
+    }, { passive: false });
+    document.addEventListener("touchend", () => {
+      if (!pulling) return;
+      pulling = false;
+      if (dist >= THRESHOLD) { busy = true; ptr.classList.add("snap"); show(THRESHOLD, "loading"); setTimeout(() => location.reload(), 250); }
+      else reset();
+    });
+    document.addEventListener("touchcancel", reset);
+  })();
+
   // start
   api("/api/session").then((s) => (s.role ? showApp() : showLogin())).catch(() => {
     showLogin();

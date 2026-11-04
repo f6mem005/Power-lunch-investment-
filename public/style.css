@@ -209,3 +209,20 @@ dialog ol { padding-left: 20px; line-height: 1.7; }
 @media (max-width: 700px) { .actions { flex-basis: 100%; margin-left: 0; } }
 
 dialog[data-update]::before { content: "A new version is ready. It will load when you close this window."; display: block; margin: -4px 0 12px; padding: 8px 10px; border-radius: 8px; background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; }
+
+/* Nothing stays pinned on touch devices or in the installed app: the navigation scrolls away with the page. */
+@media (hover: none) and (pointer: coarse), (display-mode: standalone) {
+  .navbar { position: static; }
+  html, body { overscroll-behavior-y: contain; }   /* we draw our own pull-down refresh */
+}
+.titlebar { position: relative; }
+.titlebtn { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(255, 255, 255, 0.10); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; }
+.titlebtn:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* pull down to refresh */
+.ptr { position: fixed; z-index: 50; top: env(safe-area-inset-top, 0px); left: 50%; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface); color: var(--ink); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); font-size: 20px; opacity: 0; pointer-events: none; transform: translate(-50%, -56px); }
+.ptr.snap { transition: transform 0.2s ease, opacity 0.2s ease; }
+.ptr[data-state="ready"] { color: var(--accent); }
+.ptr[data-state="loading"] span { display: inline-block; animation: ptrspin 0.8s linear infinite; }
+@keyframes ptrspin { to { transform: rotate(360deg); } }
