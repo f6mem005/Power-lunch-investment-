@@ -101,10 +101,12 @@
     const estimated = scopedDeals.filter((d) => ["placeholder", "cost", "estimate"].includes(deals[d.id].basis));
     const noTerms = scopedDeals.filter((d) => d.mgmtFeePct == null && d.carryPct == null);
     const kpi = (label, value, sub, c = "") => `<div class="card kpi"><div class="label">${label}</div><div class="value ${c}">${value}</div><div class="sub">${sub}</div></div>`;
-    const rank = (type) => {
-      const empty = !state.people.some((p) => p.type === type && (f === "all" || people[p.id].invested > 0));
-      if (empty) return "";
-      const list = state.people.filter((p) => p.type === type && (f === "all" || people[p.id].invested > 0)).sort((a, b) => people[b.id].value - people[a.id].value);
+    // When everything in view is an individual deal, show one "Investors" card instead of splitting members from others.
+    const individualOnly = scopedDeals.length > 0 && scopedDeals.every((d) => d.channel === "individual");
+    const listed = (p) => (f === "all" && !individualOnly ? true : people[p.id].invested > 0);
+    const rank = (inGroup) => {
+      const list = state.people.filter((p) => inGroup(p) && listed(p)).sort((a, b) => people[b.id].value - people[a.id].value);
+      if (!list.length) return "";
       const max = Math.max(1, ...list.map((p) => people[p.id].value));
       return `<div class="bars">${list
         .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} net value on ${money(people[p.id].invested)} invested (${gainPct(people[p.id].gain, people[p.id].invested)} after carry)`)}><div class="name">${personLink(p)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}<div class="small ${cls(people[p.id].gain)}">${gainPct(people[p.id].gain, people[p.id].invested)}</div></div></div>`)
@@ -133,8 +135,10 @@
         ${kpi("Distributions received", money(total.distributions), "Cash returned so far")}
       </div>
       <div class="grid-2">
-        ${rank("member") ? `<div class="card"><h2>Club members - net value</h2>${rank("member")}</div>` : ""}
-        ${rank("non-member") ? `<div class="card"><h2>${state.me && state.me.type === "non-member" ? "Your investments - net value" : "Other investors - net value"}</h2>${rank("non-member")}</div>` : ""}
+        ${individualOnly
+          ? `<div class="card"><h2>Investors - net value</h2>${rank(() => true)}</div>`
+          : `${rank((p) => p.type === "member") ? `<div class="card"><h2>Club members - net value</h2>${rank((p) => p.type === "member")}</div>` : ""}
+        ${rank((p) => p.type !== "member") ? `<div class="card"><h2>${state.me && state.me.type === "non-member" ? "Your investments - net value" : "Other investors - net value"}</h2>${rank((p) => p.type !== "member")}</div>` : ""}`}
       </div>
       <div class="card"><h2>${showWho ? "Every investment" : "Your investments"}</h2>${showWho ? legend() : ""}
         <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th>${showShares ? '<th class="num">Shares held</th>' : ""}<th class="num">Value (net of carry)</th><th class="num">Gain / loss (net of carry)</th>${showWho ? "<th>Who holds it</th>" : ""}</tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Nothing to show here yet.</td></tr>'}</tbody></table></div>
@@ -159,6 +163,12 @@
   }
   function people() {
     const has = (p) => state.scope === "all" || state.d.people[p.id].holdings.length > 0;
+    const dl = scopedDealList();
+    if (dl.length && dl.every((d) => d.channel === "individual")) {
+      const everyone = state.people.filter((p) => state.d.people[p.id].holdings.length > 0);
+      return `<div class="stack"><div class="section-head"><h2>Investors</h2><span class="muted">${everyone.length} ${everyone.length === 1 ? "person" : "people"}</span></div>
+        ${everyone.map(peopleCard).join("") || '<p class="muted">No investors yet.</p>'}</div>`;
+    }
     const members = state.people.filter((p) => p.type === "member" && has(p));
     const others = state.people.filter((p) => p.type !== "member" && has(p));
     return `<div class="stack"><div class="section-head"><h2>Club members</h2><span class="muted">${members.length} members</span></div>
