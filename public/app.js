@@ -12,6 +12,25 @@
   const gainPct = (gain, invested) => (invested ? `${gain >= 0 ? "+" : "−"}${(Math.abs(gain / invested) * 100).toFixed(1)}%` : "—");
   const cls = (n) => (n > 0 ? "pos" : n < 0 ? "neg" : "");
 
+  // While any pop-up window is open the page behind it is frozen, then put back exactly where it was. Without this, a swipe
+  // that lands on the dark area or reaches the window's edge scrolls the page instead of the window, and opening a window
+  // can jump the page (the browser scrolls to the first field).
+  let lockedAt = null;
+  const lockPage = () => {
+    if (lockedAt !== null) return;
+    lockedAt = window.scrollY;
+    Object.assign(document.body.style, { position: "fixed", top: `-${lockedAt}px`, left: "0", right: "0", width: "100%" });
+  };
+  const unlockPage = () => {
+    if (lockedAt === null) return;
+    Object.assign(document.body.style, { position: "", top: "", left: "", right: "", width: "" });
+    window.scrollTo(0, lockedAt);
+    lockedAt = null;
+  };
+  const nativeShowModal = HTMLDialogElement.prototype.showModal;
+  HTMLDialogElement.prototype.showModal = function () { lockPage(); return nativeShowModal.call(this); };
+  document.addEventListener("close", () => { if (!document.querySelector("dialog[open]")) unlockPage(); }, true);
+
   const state = {
     scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
     role: null, me: null, previewOf: null, passcodes: {}, priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
