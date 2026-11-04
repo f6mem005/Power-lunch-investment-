@@ -22,11 +22,12 @@
     const nextIdx = (from) => { for (let k = from + 1; k < all.length; k++) if (vis(all[k])) return k; return -1; };
     let cur = nextIdx(-1);
     const h = {
-      repaint: () => paint(),
+      repaint: (focusSel) => paint("", focusSel || false),
       replaceAfter: (list) => all.splice(cur + 1, all.length, ...list),
     };
 
-    function paint(error = "") {
+    // focus: true = first field (a new step), a selector = that field, false = leave focus alone
+    function paint(error = "", focus = true) {
       const s = all[cur];
       const visible = all.map((x, k) => [x, k]).filter(([x]) => vis(x));
       const pos = visible.findIndex(([, k]) => k === cur);
@@ -62,14 +63,15 @@
       });
       s.onChange && s.onChange(form, ctx);
       if (!dlg.open) dlg.showModal();
-      form.querySelector("input:not([type=radio]):not([type=checkbox]), select")?.focus();
+      if (focus === true) form.querySelector("input:not([type=radio]):not([type=checkbox]), select")?.focus();
+      else if (typeof focus === "string") form.querySelector(focus)?.focus();
     }
 
     async function next() {
       const s = all[cur];
       const form = $("#wizForm", dlg);
       const err = s.read ? s.read(form, ctx, h) : "";
-      if (err) return paint(err);
+      if (err) return paint(err, false);
       if (s.commit) {
         const btn = $("[type=submit]", form);
         btn.disabled = true; btn.textContent = "Saving…";
@@ -143,38 +145,54 @@
       },
       {
         q: (c) => (isNew(c) ? "Who invested, and how much?" : `Who put money into ${dealName(c)}, and how much?`),
-        help: "The amount is the cash each person paid in. Add a row for every investor.",
-        body: (c) => `<div class="inv-rows">${c.investors.map((r, i) => `<div class="inv-row">
-            <select name="person-${i}" aria-label="Person ${i + 1}">${personOptions(r.personId)}</select>
-            <input name="amount-${i}" type="number" min="0" step="0.01" placeholder="Amount ($)" aria-label="Amount ${i + 1}" value="${esc(r.amount)}">
-            ${c.investors.length > 1 ? `<button type="button" class="btn small ghost" data-act="remove" data-i="${i}">Remove</button>` : "<span></span>"}
-            <div class="inv-new" ${r.personId === "__new" ? "" : "hidden"}><input name="newname-${i}" placeholder="New person's name" value="${esc(r.newName)}"><select name="newtype-${i}" aria-label="Status"><option value="member"${r.newType === "member" ? " selected" : ""}>Club member</option><option value="non-member"${r.newType === "non-member" ? " selected" : ""}>Not a club member</option></select></div></div>`).join("")}</div>
+        help: "The amount is the cash each person paid in. Add a box for every investor.",
+        body: (c) => {
+          c._newShown = Object.fromEntries(c.investors.map((r, i) => [i, r.personId === "__new"]));
+          return `<div class="inv-rows">${c.investors.map((r, i) => `<fieldset class="inv-card">
+              <div class="inv-head"><strong>Investor ${i + 1}</strong>${c.investors.length > 1 ? `<button type="button" class="btn small ghost" data-act="remove" data-i="${i}">Remove</button>` : ""}</div>
+              <label for="wp-${i}">Who invested</label>
+              <select id="wp-${i}" name="person-${i}">${personOptions(r.personId)}</select>
+              <div class="inv-new" ${r.personId === "__new" ? "" : "hidden"}>
+                <label for="wn-${i}">New person's name</label><input id="wn-${i}" name="newname-${i}" value="${esc(r.newName)}" autocomplete="off">
+                <label for="wt-${i}">Are they a club member?</label>
+                <select id="wt-${i}" name="newtype-${i}"><option value="member"${r.newType === "member" ? " selected" : ""}>Club member</option><option value="non-member"${r.newType === "non-member" ? " selected" : ""}>Not a club member</option></select>
+              </div>
+              <label for="wa-${i}">Amount invested ($)</label>
+              <input id="wa-${i}" name="amount-${i}" type="number" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 5000" value="${esc(r.amount)}">
+            </fieldset>`).join("")}</div>
           <button type="button" class="btn small" data-act="add">＋ Add another investor</button>
-          <p class="muted" data-total></p>`,
+          <p class="muted" data-total></p>`;
+        },
         onChange: (f, c) => {
-          c.investors.forEach((_, i) => { f.querySelector(`[name=newname-${i}]`).closest(".inv-new").hidden = val(f, `person-${i}`) !== "__new"; });
+          c.investors.forEach((_, i) => {
+            const show = val(f, `person-${i}`) === "__new";
+            f.querySelector(`[name=newname-${i}]`).closest(".inv-new").hidden = !show;
+            if (show && !c._newShown[i]) f.querySelector(`[name=newname-${i}]`).focus(); // just picked "Someone new": go straight to their name
+            c._newShown[i] = show;
+          });
           const t = c.investors.reduce((s, _, i) => s + (Number(val(f, `amount-${i}`)) || 0), 0);
           f.querySelector("[data-total]").textContent = `Total: ${money(t)}`;
         },
         actions: {
-          add: (f, c, h) => { syncRows(f, c); c.investors.push({ personId: "", newName: "", newType: "member", amount: "" }); h.repaint(); },
-          remove: (f, c, h, d) => { syncRows(f, c); c.investors.splice(Number(d.i), 1); h.repaint(); },
+          // the cursor goes to the NEW investor's name field, never back to the first row
+          add: (f, c, h) => { syncRows(f, c); c.investors.push({ personId: "", newName: "", newType: "member", amount: "" }); h.repaint(`[name=person-${c.investors.length - 1}]`); },
+          remove: (f, c, h, d) => { syncRows(f, c); c.investors.splice(Number(d.i), 1); h.repaint(`[name=person-${Math.max(0, c.investors.length - 1)}]`); },
         },
         read: (f, c) => {
           syncRows(f, c);
           const seen = new Set();
           for (const [i, r] of c.investors.entries()) {
             const n = i + 1;
-            if (!r.personId) return `Choose who invested in row ${n}.`;
+            if (!r.personId) return `Choose who invested for investor ${n}.`;
             const name = r.personId === "__new" ? r.newName.trim() : "";
             if (r.personId === "__new") {
-              if (!name) return `Type the new person's name in row ${n}.`;
+              if (!name) return `Type the new person's name for investor ${n}.`;
               if (P.state.people.some((p) => p.name.toLowerCase() === name.toLowerCase())) return `${name} already exists. Pick them from the list instead.`;
             }
             const key = r.personId === "__new" ? `new:${name.toLowerCase()}` : r.personId;
             if (seen.has(key)) return "Someone is listed twice. Combine their amounts into one row.";
             seen.add(key);
-            if (!(Number(r.amount) > 0)) return `Enter an amount above $0 in row ${n}.`;
+            if (!(Number(r.amount) > 0)) return `Enter an amount above $0 for investor ${n}.`;
           }
         },
       },

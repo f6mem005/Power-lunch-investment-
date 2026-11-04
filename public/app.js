@@ -109,7 +109,7 @@
       if (!list.length) return "";
       const max = Math.max(1, ...list.map((p) => people[p.id].value));
       return `<div class="bars">${list
-        .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} net value on ${money(people[p.id].invested)} invested (${gainPct(people[p.id].gain, people[p.id].invested)} after carry)`)}><div class="name">${personLink(p)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}<div class="small ${cls(people[p.id].gain)}">${gainPct(people[p.id].gain, people[p.id].invested)}</div></div></div>`)
+        .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} net value on ${money(people[p.id].invested)} invested (${gainPct(people[p.id].gain, people[p.id].invested)} after carry)`)}><div class="name">${personLink(p)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%;background:${color(p.id)}"></div></div><div class="val">${money(people[p.id].value)}<div class="small ${cls(people[p.id].gain)}">${gainPct(people[p.id].gain, people[p.id].invested)}</div></div></div>`)
         .join("")}</div>`;
     };
     const showWho = scopedDeals.some((d) => !d.partial);
@@ -293,6 +293,10 @@
         <div class="card"><h2>Add a person</h2>
           <form id="addPerson"><label for="ap-name">Name</label><input id="ap-name" name="name" required>
             <label for="ap-type">Status</label><select id="ap-type" name="type"><option value="member">Club member</option><option value="non-member">Not a club member</option></select>
+            <p style="margin:14px 0 0"><strong>Also record what they invested</strong> <span class="muted">(optional)</span></p>
+            <div class="form-grid"><div><label for="ap-deal">Deal</label><select id="ap-deal" name="dealId"><option value="">No investment yet</option>${options(state.deals)}</select></div>
+              <div><label for="ap-amt">Amount invested ($)</label><input id="ap-amt" name="amount" type="number" min="0" step="0.01" inputmode="decimal"></div>
+              <div><label for="ap-date">Date</label><input id="ap-date" name="date" type="date" value="${today()}"></div></div>
             <p class="error" data-err></p><div class="row-actions"><button class="btn primary" type="submit">Add person</button></div></form>
           <h3 style="margin-top:18px">People</h3>
           <ul style="padding-left:18px;margin:6px 0 0">${state.people.map((p) => `<li>${esc(p.name)} - ${p.type === "member" ? "member" : "non-member"} · ${state.passcodes[p.id] ? "can sign in" : "no sign-in yet"} <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button></li>`).join("")}</ul></div>
@@ -506,7 +510,14 @@
     const f = e.target;
     if (f.id === "addHolding") submitForm(f, (b) => api("/api/holdings", { method: "POST", body: b }));
     if (f.id === "addDeal") submitForm(f, (b) => api("/api/deals", { method: "POST", body: b }));
-    if (f.id === "addPerson") submitForm(f, (b) => api("/api/people", { method: "POST", body: b }));
+    if (f.id === "addPerson") submitForm(f, async (b) => {
+      if (b.dealId || b.amount) {
+        if (!b.dealId) throw new Error("Choose which deal they invested in, or clear the amount.");
+        if (!b.amount) throw new Error("Enter the amount they invested, or choose no investment.");
+        return api("/api/investments", { method: "POST", body: { dealId: b.dealId, date: b.date, investors: [{ newPerson: { name: b.name, type: b.type }, invested: b.amount }] } });
+      }
+      return api("/api/people", { method: "POST", body: { name: b.name, type: b.type } });
+    });
   });
   $("#scopeBar").addEventListener("click", (e) => {
     const b = e.target.closest("[data-scope]");

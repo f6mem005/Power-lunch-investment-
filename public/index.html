@@ -31,8 +31,12 @@
   </section>
 
   <div id="app" hidden>
-    <header class="topbar">
-      <div class="brand">Pari Passu Investments</div>
+    <header class="titlebar">
+      <img class="logo" src="/icons/icon.svg" alt="" width="44" height="44">
+      <h1 class="title">Pari Passu Investments</h1>
+      <p class="tagline">Power Lunch Club &amp; individual investments</p>
+    </header>
+    <div class="navbar">
       <nav id="tabs" aria-label="Sections">
         <a href="#overview" data-tab="overview">Overview</a>
         <a href="#people" data-tab="people">People</a>
@@ -48,7 +52,7 @@
         <button id="themeBtn" class="btn ghost" type="button" aria-label="Toggle light or dark theme">Theme</button>
         <button id="logoutBtn" class="btn ghost" type="button">Sign out</button>
       </div>
-    </header>
+    </div>
     <div id="previewBar" class="previewbar" role="status" hidden></div>
     <div id="scopeBar" class="scopebar" role="radiogroup" aria-label="Which investments to show"></div>
     <main id="view" tabindex="-1"></main>
