@@ -1,8 +1,11 @@
 import { store } from "./store.mts";
 
-export type Quote = { price: number | null; asOf: string | null; source: string; error?: string };
+export type Quote = { price: number | null; asOf: string | null; source: string; error?: string; fetchedAt?: number; stale?: boolean };
 
 const TTL_MS = 5 * 60 * 1000;
+// A stored price older than this is not shown as a live price; the deal falls back to its manual value and says why.
+export const STALE_MS = 24 * 60 * 60 * 1000;
+export const withStaleFlag = (q: Quote, now = Date.now()): Quote => ({ ...q, stale: now - (q.fetchedAt ?? 0) > STALE_MS });
 export const validSymbol = (s: string) => /^[A-Z0-9.\-]{1,10}$/.test(s);
 
 async function fetchQuote(symbol: string): Promise<Quote> {
@@ -35,12 +38,13 @@ export async function getQuotes(symbols: string[]): Promise<Record<string, Quote
     [...new Set(symbols.filter(validSymbol))].map(async (sym) => {
       const cached = (await s.get(`cache/price/${sym}`, { type: "json" })) as (Quote & { fetchedAt: number }) | null;
       if (cached && Date.now() - cached.fetchedAt < TTL_MS) {
-        out[sym] = cached;
+        out[sym] = { ...cached, stale: false };
         return;
       }
       const q = await fetchQuote(sym);
       if (q.price !== null) await s.setJSON(`cache/price/${sym}`, { ...q, fetchedAt: Date.now() });
-      out[sym] = q.price === null && cached ? { ...cached, error: q.error } : q;
+      // If the refresh failed, keep the last good price but flag it stale so it is never presented as live.
+      out[sym] = q.price === null && cached ? { ...cached, stale: true, error: q.error } : q;
     }),
   );
   return out;
@@ -53,7 +57,7 @@ export async function cachedQuotes(symbols: string[]): Promise<Record<string, Qu
   await Promise.all(
     [...new Set(symbols.filter(validSymbol))].map(async (sym) => {
       const c = (await s.get(`cache/price/${sym}`, { type: "json" })) as Quote | null;
-      if (c) out[sym] = c;
+      if (c) out[sym] = withStaleFlag(c);
     }),
   );
   return out;

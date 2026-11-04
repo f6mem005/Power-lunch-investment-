@@ -259,7 +259,8 @@
   }
 
   const options = (items, sel) => items.map((i) => `<option value="${esc(i.id)}"${i.id === sel ? " selected" : ""}>${esc(i.name)}</option>`).join("");
-  const today = () => new Date().toISOString().slice(0, 10);
+  // The user's own calendar date (not UTC, which is already "tomorrow" in the evening).
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
   function admin() {
     const rows = state.d.holdings
@@ -374,7 +375,7 @@
         <div><label for="e-carry">Carry (% of profit)</label><input id="e-carry" name="carryPct" type="number" min="0" max="100" step="0.01" value="${d.carryPct ?? ""}"></div>
         <div><label for="e-val">Current value ($, whole deal, before carry)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
         <div><label for="e-src">Value source</label><select id="e-src" name="valueSource">${d.valueSource === "placeholder" ? '<option value="placeholder" selected>Placeholder (from spreadsheet)</option>' : ""}<option value="statement"${d.valueSource === "statement" ? " selected" : ""}>From a statement</option><option value="estimate"${d.valueSource === "estimate" ? " selected" : ""}>Estimate</option></select></div>
-        <div><label for="e-asof">Value as-of date</label><input id="e-asof" name="valueAsOf" type="date" value="${d.valueAsOf || today()}"></div>
+        <div><label for="e-asof">Value as-of date</label><input id="e-asof" name="valueAsOf" type="date" value="${d.valueAsOf || ""}"></div>
       </div>
       <label for="e-vn">Note for the value history (optional)</label><input id="e-vn" name="valueNote">
       <label for="e-notes">Deal notes</label><input id="e-notes" name="notes" value="${esc(d.notes || "")}">
@@ -454,7 +455,7 @@
     if (!afterPrices && state.deals.some((d) => d.ticker)) {
       api(`/api/prices${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`).then((q) => {
         // Keep the provider's own error text so the Deals tab can say why a price is missing.
-        state.priceErrors = Object.fromEntries(Object.entries(q).filter(([, v]) => v.price == null).map(([k, v]) => [k, `${v.error || "no price returned"} (source: ${v.source})`]));
+        state.priceErrors = Object.fromEntries(Object.entries(q).filter(([, v]) => v.price == null || v.stale).map(([k, v]) => [k, `${v.error || (v.stale ? "the last live price is out of date" : "no price returned")} (source: ${v.source})`]));
         if (Object.keys(q).some((k) => (q[k].price ?? null) !== (state.quotes[k]?.price ?? null))) refresh(true);
         else render();
       }).catch(() => {});

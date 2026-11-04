@@ -21,9 +21,10 @@ export function buildView(viewer: Viewer, people: Person[], deals: Deal[], holdi
 
   const valuation = (d: Deal) => {
     const q = d.ticker ? quotes[d.ticker] : undefined;
-    if (d.ticker && d.sharesHeld && q?.price) return { value: d.sharesHeld * q.price, basis: "live", price: q.price };
-    if (d.manualValue != null) return { value: d.manualValue, basis: d.valueSource, price: q?.price ?? null };
-    return { value: invested[d.id] || 0, basis: "cost", price: q?.price ?? null };
+    const price = q?.price && !q.stale ? q.price : null; // a stale price is never used as a live price
+    if (d.ticker && d.sharesHeld && price) return { value: d.sharesHeld * price, basis: "live", price };
+    if (d.manualValue != null) return { value: d.manualValue, basis: d.valueSource, price };
+    return { value: invested[d.id] || 0, basis: "cost", price };
   };
   const holders = new Map<string, Set<string>>();
   holdings.forEach((h) => holders.set(h.dealId, (holders.get(h.dealId) ?? new Set<string>()).add(h.personId)));
@@ -51,10 +52,10 @@ export function buildView(viewer: Viewer, people: Person[], deals: Deal[], holdi
       const whole = seesWholeDeal(d);
       const base = {
         id: d.id, name: d.name, channel: d.channel, ticker: d.ticker, mgmtFeePct: d.mgmtFeePct ?? null, carryPct: d.carryPct ?? null,
-        basis: v.basis, price: v.price, priceError: q?.error ?? null, needsShares: !!(d.ticker && !d.sharesHeld), partial: !whole,
+        basis: v.basis, price: v.price, priceError: q?.error ?? (q?.stale ? "the last live price is over a day old" : null), needsShares: !!(d.ticker && !d.sharesHeld), partial: !whole,
         valueAsOf: v.basis === "live" ? null : d.valueAsOf,
       };
-      if (isAdmin) return { ...d, ...base };
+      if (isAdmin) return { ...d, ...base, valueAsOf: d.valueAsOf }; // admin edits the stored date, not the display one
       return whole ? { ...base, sharesHeld: d.sharesHeld, notes: d.notes } : base;
     });
 

@@ -37,8 +37,18 @@ const optPct = (v: unknown, name: string) => {
 };
 const dateStr = (v: unknown, name: string) => {
   const s = str(v, name, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || Number.isNaN(Date.parse(s))) bad(`${name} must be a date (YYYY-MM-DD)`);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  // Round-trip through a real date so impossible days (2026-02-31, which Date.parse accepts) are rejected.
+  const d = m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])) : null;
+  if (!m || !d || d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) bad(`${name} must be a real date (YYYY-MM-DD)`);
   return s;
+};
+// Share counts keep up to 6 decimals (money() rounds to cents, which is wrong for fractional shares).
+const optQty = (v: unknown, name: string) => {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 1e12) bad(`${name} must be a number of 0 or more`);
+  return Math.round(n * 1e6) / 1e6;
 };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "item";
 const newId = (label: string) => `${slug(label)}-${crypto.randomUUID().slice(0, 6)}`;
@@ -49,7 +59,9 @@ const ticker = (v: unknown) => {
   return s;
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+// "Today" in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
+const TZ = Netlify.env.get("APP_TIMEZONE") || "America/New_York";
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
 
 function buildDeal(body: any): Deal {
   const name = str(body.name, "Deal name");
@@ -59,7 +71,7 @@ function buildDeal(body: any): Deal {
     name,
     channel: body.channel === "individual" ? "individual" : "club",
     ticker: ticker(body.ticker),
-    sharesHeld: optMoney(body.sharesHeld, "Shares held"),
+    sharesHeld: optQty(body.sharesHeld, "Shares held"),
     manualValue: optMoney(body.manualValue, "Current value"),
     valueSource: !hasValue ? "estimate" : body.valueSource === "estimate" ? "estimate" : "statement",
     valueAsOf: !hasValue ? null : body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today(),
@@ -130,7 +142,7 @@ export default async (req: Request) => {
     if (!isAdmin) return fail("Admin access required", 403);
     if (resource === "export" && method === "GET") {
       const [people, deals, holdings] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding)]);
-      const stamp = new Date().toISOString().slice(0, 10);
+      const stamp = today();
       return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), people, deals, holdings }, null, 2), {
         headers: { "content-type": "application/json", "cache-control": "no-store", "content-disposition": `attachment; filename="pari-passu-backup-${stamp}.json"` },
       });
@@ -198,7 +210,7 @@ export default async (req: Request) => {
         d.name = str(body.name ?? d.name, "Name");
         d.channel = body.channel === "individual" ? "individual" : "club";
         d.ticker = ticker(body.ticker);
-        d.sharesHeld = optMoney(body.sharesHeld, "Shares held");
+        d.sharesHeld = optQty(body.sharesHeld, "Shares held");
         d.mgmtFeePct = optPct(body.mgmtFeePct, "Management fee");
         d.carryPct = optPct(body.carryPct, "Carry");
         d.notes = optStr(body.notes);
@@ -209,9 +221,9 @@ export default async (req: Request) => {
           d.valueHistory = [...(d.valueHistory ?? []), { at: new Date().toISOString(), value: d.manualValue, source: d.valueSource, note: optStr(body.valueNote, 200) }].slice(-50);
           d.manualValue = nextValue;
           d.valueSource = nextSource;
-          d.valueAsOf = body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : new Date().toISOString().slice(0, 10);
-        } else if (body.valueAsOf) {
-          d.valueAsOf = dateStr(body.valueAsOf, "Value as-of date");
+          d.valueAsOf = body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today();
+        } else if (body.valueAsOf && body.valueAsOf !== d.valueAsOf) {
+          d.valueAsOf = dateStr(body.valueAsOf, "Value as-of date"); // an explicit correction of the date only
         }
         await putOne(KINDS.deal, d);
         return json(d);

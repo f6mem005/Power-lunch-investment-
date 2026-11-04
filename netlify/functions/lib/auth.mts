@@ -52,9 +52,11 @@ export async function checkAdminPasscode(input: string) {
 }
 
 // ---- session cookie ----
+// Admin cookies carry a fingerprint of the current ADMIN_PASSCODE, so changing the passcode signs every admin session out.
+const adminVer = async () => (await hmac(secrets().secret, `adminver:${secrets().admin}`)).slice(0, 16);
 export async function makeCookie(session: Session) {
   const exp = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
-  const who = session.kind === "admin" ? "a::" : `p:${session.personId}:${session.ver}`;
+  const who = session.kind === "admin" ? `a::${await adminVer()}` : `p:${session.personId}:${session.ver}`;
   const sig = await hmac(secrets().secret, `sess:${who}.${exp}`);
   return `${COOKIE}=${who}.${exp}.${sig}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_SECONDS}`;
 }
@@ -69,7 +71,7 @@ export async function readSession(req: Request): Promise<Session | null> {
   if (!who || !exp || !sig || Number(exp) < Date.now() / 1000) return null;
   if (!safeEqual(sig, await hmac(secrets().secret, `sess:${who}.${exp}`))) return null;
   const [kind, personId, ver] = who.split(":");
-  if (kind === "a") return { kind: "admin" };
+  if (kind === "a") return ver && safeEqual(ver, await adminVer()) ? { kind: "admin" } : null;
   if (kind === "p" && personId && ver) return { kind: "person", personId, ver };
   return null;
 }
