@@ -75,6 +75,7 @@ h3 { font-size: 16px; }
 #tabs a:hover { background: var(--grid); }
 #tabs a[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.actions-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--axis); color: var(--ink-2); white-space: nowrap; }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
 .badge.live { color: var(--good); border-color: var(--good); }
@@ -154,11 +155,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 /* keep wide tables scrolling inside their card instead of stretching the page */
 .stack > *, .grid-2 > *, .card { min-width: 0; }
 .grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); }
-@media (max-width: 700px) {
-  #tabs { flex-basis: 100%; }
-  .actions { margin-left: 0; }
-  .navbar { position: static; }   /* two rows of controls would eat the screen if they stayed pinned */
-}
 
 .scopebar { max-width: 1100px; margin: 14px auto 0; padding: 0 16px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .scopebar button { font: inherit; font-weight: 600; padding: 6px 14px; border-radius: 99px; cursor: pointer; border: 1px solid var(--axis); background: var(--surface); color: var(--ink-2); }
@@ -206,7 +202,23 @@ a.link:hover { color: var(--accent); text-decoration-style: solid; }
 main { padding-bottom: max(60px, calc(env(safe-area-inset-bottom) + 24px)); }
 dialog ol { padding-left: 20px; line-height: 1.7; }
 
-@media (max-width: 700px) { .actions { flex-basis: 100%; margin-left: 0; } }
+/* Phones: use the whole width instead of leaving everything bunched on the left. */
+@media (max-width: 700px) {
+  .navbar { position: static; gap: 10px; padding-top: 10px; padding-bottom: 12px; }   /* two rows of controls would eat the screen if they stayed pinned */
+  #tabs { flex-basis: 100%; flex-wrap: nowrap; gap: 2px; }
+  #tabs a { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; padding: 9px 4px; font-size: clamp(12.5px, 3.5vw, 14px); }
+  #tabs a[hidden] { display: none; }
+  .actions { flex-basis: 100%; margin-left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; align-items: end; }
+  .actions .previewwrap { min-width: 0; }
+  .actions .previewwrap select { width: 100%; }
+  .actions #addInvBtn { width: 100%; padding: 10px 8px; }
+  .actions-sub { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; gap: 6px; }
+  .actions-sub .btn { padding-left: 8px; padding-right: 8px; }
+  .scopebar { gap: 8px; }
+  .scopebar > span { flex: 0 0 auto; }
+  .scopebar button { flex: 1 1 auto; text-align: center; padding: 8px 10px; font-size: 14px; }
+}
+@media (max-width: 340px) { #tabs a { padding: 9px 1px; font-size: 12px; } }
 
 dialog[data-update]::before { content: "A new version is ready. It will load when you close this window."; display: block; margin: -4px 0 12px; padding: 8px 10px; border-radius: 8px; background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; }
 
