@@ -1,7 +1,7 @@
 // Makes the app installable and lets the page shell open without a connection.
 // It deliberately never touches /api/ or /auth/: private data and sign-in are never cached on the device.
-const CACHE = "pari-passu-shell-v1";
-const SHELL = ["/", "/style.css", "/app.js", "/wizard.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
+const CACHE = "pari-passu-shell-v2";
+const SHELL = ["/", "/style.css", "/app.js", "/wizard.js", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/icons/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
