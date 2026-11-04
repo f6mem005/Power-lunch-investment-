@@ -1,9 +1,11 @@
 // Builds exactly what one signed-in person is allowed to see. All privacy rules live here, on the server:
 //   admin               -> everything
-//   club member         -> every holding in Power Lunch Club deals, plus their OWN holdings in individual deals
-//   non-member          -> only their OWN holdings
-// For a deal a person can only partly see, nothing that would reveal other people's amounts is sent
-// (no deal total, no share %, no deal value or share count, no value history, no notes).
+//   club member         -> every holding in Power Lunch Club deals
+//   anyone (any deal)   -> every holder of an INDIVIDUAL deal they hold a stake in (co-investors see each other)
+//   otherwise           -> only their OWN holdings (e.g. a non-member who holds a club deal sees just their own)
+// Individual deals they are not part of are invisible. For a deal a person can only partly see, nothing that would
+// reveal other people's amounts is sent (no deal total, no share %, no deal value or share count, no value
+// history, no notes).
 import type { Quote } from "./prices.mts";
 import type { Deal, Holding, Person } from "./store.mts";
 
@@ -23,7 +25,10 @@ export function buildView(viewer: Viewer, people: Person[], deals: Deal[], holdi
     if (d.manualValue != null) return { value: d.manualValue, basis: d.valueSource, price: q?.price ?? null };
     return { value: invested[d.id] || 0, basis: "cost", price: q?.price ?? null };
   };
-  const seesWholeDeal = (d: Deal) => isAdmin || (d.channel === "club" && me?.type === "member");
+  const holders = new Map<string, Set<string>>();
+  holdings.forEach((h) => holders.set(h.dealId, (holders.get(h.dealId) ?? new Set<string>()).add(h.personId)));
+  const seesWholeDeal = (d: Deal) =>
+    isAdmin || (d.channel === "club" ? me?.type === "member" : !!me && !!holders.get(d.id)?.has(me.id));
 
   const rows = holdings.flatMap((h) => {
     const d = dealById.get(h.dealId);
