@@ -37,15 +37,23 @@
   };
 
   async function api(path, opts = {}) {
-    const res = await fetch(path, {
+    const init = {
       credentials: "same-origin",
       headers: opts.method && opts.method !== "GET" ? { "content-type": "application/json" } : {},
       ...opts,
       body: opts.body ? JSON.stringify(opts.body) : undefined,
-    });
+    };
+    let res;
+    try {
+      res = await fetch(path, init);
+    } catch (e) {
+      console.warn("request failed:", path, e);
+      if (e instanceof TypeError) throw new Error("Can't reach the server. Check your connection and try again."); // instead of "Failed to fetch"
+      throw e;
+    }
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && !path.startsWith("/auth/")) showLogin();
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    if (!res.ok) throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
     return data;
   }
 
@@ -209,6 +217,7 @@
           <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : d.ticker ? "Shares held: <strong>not entered yet</strong> · " : ""}Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, dd.invested)}) net of carry</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
           ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
+          ${state.role === "admin" && d.price && (d.priceError || state.priceErrors[d.ticker]) ? `<p class="muted">Price lookup is failing, so the last good price is being used: ${esc(d.priceError || state.priceErrors[d.ticker])}</p>` : ""}
           ${d.ticker && !d.needsShares && !d.price ? `<p class="muted">Live price unavailable: ${esc(d.priceError || state.priceErrors[d.ticker] || "still checking")}</p>` : ""}
           ${d.notes ? `<p class="muted">${esc(d.notes)}</p>` : ""}
           <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th>${d.partial ? "" : '<th class="num">Share</th>'}${d.sharesHeld && !d.partial ? '<th class="num">Shares</th>' : ""}<th class="num">Value (net)</th><th class="num">Distributions</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead><tbody>
@@ -262,7 +271,8 @@
       <p class="muted" style="margin:-4px 0 0">Power Lunch Club deals only. Individual deals are excluded. Amounts are cash invested (including any upfront management fee), by investment date, not current value. Built from the holdings you've entered, so confirm with your accountant before filing.</p>${cards}</div>`;
   }
   function yearEndCsv() {
-    const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    // A name that starts with = + - @ would run as a formula when the file is opened in a spreadsheet, so mark it as text.
+    const q = (v) => `"${(typeof v === "string" && /^\s*[=+\-@]|^[\t\r]/.test(v) && !/^-?\d+(\.\d+)?$/.test(v) ? "'" : "") + String(v).replace(/"/g, '""')}"`;
     const rows = [["Year", "Holder", "Status", "Invested during year", "Total invested at year-end (or to date)", "% of club members' total"]];
     yearEndData().forEach((Y) => {
       Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : ""]));
@@ -306,6 +316,7 @@
             <div class="form-grid"><div><label for="ad-ch">Held through</label><select id="ad-ch" name="channel"><option value="club">Power Lunch Club</option><option value="individual">Individual</option></select></div>
             <div><label for="ad-tk">Ticker (if public)</label><input id="ad-tk" name="ticker" placeholder="e.g. SPCX"></div>
             <div><label for="ad-val">Current value ($, whole deal, before carry)</label><input id="ad-val" name="manualValue" type="number" min="0" step="0.01"></div>
+            <div><label for="ad-src">Where does the value come from?</label><select id="ad-src" name="valueSource"><option value="estimate">My estimate</option><option value="statement">A statement</option></select></div>
             <div><label for="ad-fee">Upfront mgmt fee (% of amount invested)</label><input id="ad-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01"></div>
             <div><label for="ad-carry">Carry (% of profit)</label><input id="ad-carry" name="carryPct" type="number" min="0" max="100" step="0.01"></div></div>
             <label for="ad-notes">Notes</label><input id="ad-notes" name="notes"><p class="error" data-err></p><div class="row-actions"><button class="btn primary" type="submit">Add deal</button></div></form></div>
@@ -467,20 +478,51 @@
     }
   }
 
-  async function refresh(afterPrices = false) {
+  // A background update (prices arriving, the app coming back to the foreground) rebuilds the page. Anything typed into a form
+  // on it is kept: we note the values and the cursor first, and put them back afterwards.
+  const defaultIndex = (s) => { const marked = [...s.options].findIndex((o) => o.defaultSelected); return marked >= 0 ? marked : 0; }; // a drop-down starts on its first option unless one is marked
+  const snapshotForms = () => {
+    const saved = {};
+    view.querySelectorAll("form [id]").forEach((el) => {
+      if (!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return;
+      const focused = el === document.activeElement;
+      // Only what the person actually changed is put back. Untouched (e.g. pre-filled) fields take the fresh values from the server.
+      const changed = el.tagName === "SELECT" ? el.selectedIndex !== defaultIndex(el)
+        : el.type === "checkbox" || el.type === "radio" ? el.checked !== el.defaultChecked
+        : el.value !== el.defaultValue;
+      if (changed || focused) saved[el.id] = { changed, value: el.value, checked: el.checked, focused, caret: focused && el.selectionStart != null ? [el.selectionStart, el.selectionEnd] : null };
+    });
+    return saved;
+  };
+  const restoreForms = (saved) => {
+    for (const [id, s] of Object.entries(saved)) {
+      const el = document.getElementById(id);
+      if (!el || !view.contains(el)) continue;
+      if (s.changed) { if (el.type === "checkbox" || el.type === "radio") el.checked = s.checked; else el.value = s.value; }
+      if (s.focused) { el.focus(); if (s.caret) { try { el.setSelectionRange(s.caret[0], s.caret[1]); } catch { /* not a text field */ } } }
+    }
+  };
+  const softRender = () => {
+    if (!state.role) return;                    // signed out: nothing to update
+    const saved = snapshotForms();
+    render();
+    restoreForms(saved);
+  };
+
+  async function refresh(afterPrices = false, soft = false) {
     const data = await api(`/api/data${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`);
     Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, quotes: data.quotes || {} });
     if (data.role === "admin") Object.assign(state, { adminPeople: data.people, passcodes: data.passcodes || {} });
     if (!state.scope || !allowedScopes()[state.scope]) state.scope = Object.keys(allowedScopes())[0];
     derive();
-    render();
+    if (soft) softRender(); else render();
     // Live prices refresh separately so a slow quote provider never blocks the page; reload once if any price moved.
     if (!afterPrices && state.deals.some((d) => d.ticker)) {
       api(`/api/prices${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`).then((q) => {
         // Keep the provider's own error text so the Deals tab can say why a price is missing.
-        state.priceErrors = Object.fromEntries(Object.entries(q).filter(([, v]) => v.price == null || v.stale).map(([k, v]) => [k, `${v.error || (v.stale ? "the last live price is out of date" : "no price returned")} (source: ${v.source})`]));
-        if (Object.keys(q).some((k) => (q[k].price ?? null) !== (state.quotes[k]?.price ?? null))) refresh(true);
-        else render();
+        state.priceErrors = Object.fromEntries(Object.entries(q).filter(([, v]) => v.price == null || v.stale || v.error).map(([k, v]) => [k, `${v.error || (v.stale ? "the last live price is out of date" : "no price returned")} (source: ${v.source})`]));
+        if (Object.keys(q).some((k) => (q[k].price ?? null) !== (state.quotes[k]?.price ?? null))) refresh(true, true);
+        else softRender();
       }).catch(() => {});
     }
   }
@@ -492,22 +534,31 @@
   }
   async function showApp() {
     $("#login").hidden = true;
-    $("#app").hidden = false;
-    await refresh();
+    $("#app").hidden = false;     // shown first: a deep link such as #deals/openai has to scroll to its card
+    try { await refresh(); } catch (e) {
+      $("#app").hidden = true; $("#login").hidden = false;   // loading failed: back to the sign-in screen, where the message can be seen
+      Object.assign(state, { role: null, me: null });
+      throw e;
+    }
   }
 
   // ---------- events ----------
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("#loginError").textContent = "";
+    $("#retryBtn").hidden = true;
+    let signedIn = false;
     try {
       await api("/auth/login", { method: "POST", body: { name: $("#loginName").value, passcode: $("#passcode").value } });
+      signedIn = true;
       $("#passcode").value = "";
       state.previewOf = null;
+      welcomePending = true;                    // greet the admin once the app is open, even if a retry is needed first
       await showApp();
-      if (state.role === "admin") window.PLC.wizard?.welcome();
+      maybeWelcome();
     } catch (err) {
       $("#loginError").textContent = err.message;
+      $("#retryBtn").hidden = !signedIn;        // signed in but the data didn't load: retry without typing the passcode again
     }
   });
   $("#logoutBtn").onclick = async () => { await api("/api/logout", { method: "POST", body: {} }).catch(() => {}); Object.assign(state, { role: null, me: null, previewOf: null }); showLogin(); };
@@ -522,7 +573,17 @@
   async function submitForm(form, fn) {
     const err = $("[data-err]", form);
     err.textContent = "";
-    try { await fn(Object.fromEntries(new FormData(form))); await refresh(); } catch (e) { err.textContent = e.message; }
+    err.classList.remove("ok");
+    const btn = form.querySelector("[type=submit]");
+    if (btn) btn.disabled = true;           // a double-click must not submit twice
+    try {
+      await fn(Object.fromEntries(new FormData(form)));
+      try { await refresh(); } catch {        // saved: only the reload failed, so say so and try it again shortly
+        err.textContent = "Saved. The list is reloading…"; err.classList.add("ok");
+        setTimeout(() => refresh(false, true).catch(() => {}), 3000);
+      }
+    } catch (e) { err.textContent = e.message; }
+    finally { if (btn && btn.isConnected) btn.disabled = false; }
   }
   view.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -650,7 +711,7 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") { lastSeen = Date.now(); return; }
     checkForUpdate();
-    if (state.role && Date.now() - lastSeen > 5 * 60 * 1000 && !dlg.open && !$("#wiz").open) refresh().catch(() => {});
+    if (state.role && Date.now() - lastSeen > 5 * 60 * 1000 && !dlg.open && !$("#wiz").open) refresh(false, true).catch(() => {});
   });
 
   // ---------- refresh: pull down on a touch screen, or the button in the title bar ----------
@@ -672,7 +733,9 @@
     document.addEventListener("touchmove", (e) => {
       if (!pulling) return;
       const dy = e.touches[0].clientY - startY, dx = e.touches[0].clientX - startX;
-      if (dy <= 0 || window.scrollY > 0 || Math.abs(dx) > dy) { if (dist === 0) pulling = false; return; } // an ordinary scroll or a sideways swipe
+      if (window.scrollY > 0) { dist = 0; reset(); return; }                         // the page itself is scrolling: put the indicator away
+      if (dy <= 0) { dist = 0; startY = e.touches[0].clientY; ptr.classList.add("snap"); show(0, "idle"); return; } // dragged back up: cancel, and a new pull can start from here (at the top the page cannot scroll up, so nothing is lost)
+      if (Math.abs(dx) > dy && dist === 0) { pulling = false; return; }              // a sideways swipe
       e.preventDefault();                       // we own this gesture: no native bounce
       dist = Math.min(MAX, dy * 0.5);
       show(dist);
@@ -687,8 +750,14 @@
   })();
 
   // start
-  api("/api/session").then((s) => (s.role ? showApp() : showLogin())).catch(() => {
+  // A valid session whose data could not be loaded (a flaky connection) offers a retry instead of asking for the passcode again.
+  let welcomePending = false;     // set after a sign-in whose data load failed, so the retry still greets the admin
+  const maybeWelcome = () => { if (welcomePending && state.role === "admin") window.PLC.wizard?.welcome(); welcomePending = false; };
+  const startUp = () => api("/api/session").then((s) => (s.role ? showApp().then(maybeWelcome) : showLogin())).catch((e) => {
     showLogin();
-    $("#loginError").textContent = "Can't reach the server. Check your connection and reload.";
+    $("#loginError").textContent = e.message || "Something went wrong.";
+    $("#retryBtn").hidden = e.status === 401;   // a revoked session needs a passcode, not a retry
   });
+  $("#retryBtn").onclick = () => { $("#retryBtn").hidden = true; $("#loginError").textContent = ""; startUp(); };
+  startUp();
 })();

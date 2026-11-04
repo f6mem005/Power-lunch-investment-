@@ -255,7 +255,8 @@
           if (isNew(c)) body.deal = { name: c.name, channel: c.channel, ticker: c.ticker, sharesHeld: c.shares, mgmtFeePct: c.mgmtFeePct, carryPct: c.carryPct, notes: c.notes, manualValue: c.value, valueSource: c.valueSource, valueAsOf: c.valueAsOf };
           else body.dealId = c.dealId;
           c.result = await P.api("/api/investments", { method: "POST", body });
-          await P.refresh();
+          // The save has succeeded. If reloading the lists fails, don't report a failed save (a retry would save it twice).
+          try { await P.refresh(); } catch { setTimeout(() => P.refresh(false, true).catch(() => {}), 3000); } // the save worked; try the reload again shortly
         },
       },
     ];
@@ -333,7 +334,7 @@
               },
             });
             ctx.saved++;
-            await P.refresh();
+            try { await P.refresh(); } catch { setTimeout(() => P.refresh(false, true).catch(() => {}), 3000); }
           },
         },
       ];

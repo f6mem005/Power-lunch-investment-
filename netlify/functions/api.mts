@@ -61,6 +61,11 @@ const ticker = (v: unknown) => {
 
 // "Today" in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
 const TZ = Netlify.env.get("APP_TIMEZONE") || "America/New_York";
+const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+// Deal names must be unique (case-insensitive). `exceptId` lets a deal keep its own name.
+async function assertUniqueDealName(name: string, exceptId?: string, existing?: Deal[], hint = "") {
+  if ((existing ?? (await listAll<Deal>(KINDS.deal))).some((x) => x.id !== exceptId && sameName(x.name, name))) bad(`A deal with that name already exists${hint}`);
+}
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
 
 function buildDeal(body: any): Deal {
@@ -73,7 +78,7 @@ function buildDeal(body: any): Deal {
     ticker: ticker(body.ticker),
     sharesHeld: optQty(body.sharesHeld, "Shares held"),
     manualValue: optMoney(body.manualValue, "Current value"),
-    valueSource: !hasValue ? "estimate" : body.valueSource === "estimate" ? "estimate" : "statement",
+    valueSource: !hasValue ? "estimate" : body.valueSource === "statement" ? "statement" : "estimate", // a typed-in value is an estimate unless it is explicitly marked as from a statement
     valueAsOf: !hasValue ? null : body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today(),
     mgmtFeePct: optPct(body.mgmtFeePct, "Management fee"),
     carryPct: optPct(body.carryPct, "Carry"),
@@ -147,7 +152,11 @@ export default async (req: Request) => {
       });
     }
     if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON", 415);
-    const body = method === "POST" || method === "PUT" ? await req.json().catch(() => bad("Invalid JSON")) : {};
+    let body: any = {};
+    if (method === "POST" || method === "PUT") {
+      body = await req.json().catch(() => bad("Invalid JSON"));
+      if (!body || typeof body !== "object" || Array.isArray(body)) bad("Invalid JSON"); // JSON "null", numbers etc. parse fine but are not a request
+    }
 
     if (resource === "people") {
       // Personal sign-in passcode for one person (admin sets or removes it; it is stored hashed and never shown again).
@@ -200,13 +209,16 @@ export default async (req: Request) => {
     if (resource === "deals") {
       if (method === "POST") {
         const deal = buildDeal(body);
+        await assertUniqueDealName(deal.name);
         await putOne(KINDS.deal, deal);
         return json(deal, 201);
       }
       if (method === "PUT" && id) {
         const d = await getOne<Deal>(KINDS.deal, id);
         if (!d) return fail("Not found", 404);
-        d.name = str(body.name ?? d.name, "Name");
+        const newName = str(body.name ?? d.name, "Name");
+        if (!sameName(newName, d.name)) await assertUniqueDealName(newName, d.id); // only when the name is actually being changed
+        d.name = newName;
         d.channel = body.channel === "individual" ? "individual" : "club";
         d.ticker = ticker(body.ticker);
         d.sharesHeld = optQty(body.sharesHeld, "Shares held");
@@ -248,7 +260,7 @@ export default async (req: Request) => {
       } else {
         deal = buildDeal(body.deal ?? {});
         isNewDeal = true;
-        if (deals.some((d) => d.name.toLowerCase() === deal!.name.toLowerCase())) bad("A deal with that name already exists - choose it as an existing deal instead");
+        await assertUniqueDealName(deal.name, undefined, deals, " - choose it as an existing deal instead");
       }
       const investors: any[] = Array.isArray(body.investors) ? body.investors : [];
       if (!investors.length) bad("Add at least one investor");
@@ -258,6 +270,7 @@ export default async (req: Request) => {
       const seen = new Set<string>();
       const holdings: Holding[] = [];
       for (const inv of investors) {
+        if (!inv || typeof inv !== "object") bad("Each investor needs a person and an amount");
         let person: Person | undefined;
         if (inv.newPerson) {
           const name = str(inv.newPerson.name, "Name", 60);
