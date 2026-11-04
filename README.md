@@ -13,7 +13,7 @@ No build step.
 |---|---|---|
 | `SESSION_SECRET` | yes | Random string (16+ chars) that signs login cookies |
 | `ADMIN_PASSCODE` | yes | The admin's passcode (sign in with the name left blank) |
-| `FINNHUB_API_KEY` | no | Live prices via Finnhub. Without it, Stooq's free daily quotes are used |
+| `FINNHUB_API_KEY` | recommended | Live prices via Finnhub. Without it the app falls back to Stooq's free quotes, which returned HTTP 404 for SPCX, so set this for any public deal |
 
 Mark the secrets as secret and scope them to **Functions**. If either required value is missing, nobody can
 sign in (fails closed). There is no shared viewer passcode: everyone else signs in with their own name and a
