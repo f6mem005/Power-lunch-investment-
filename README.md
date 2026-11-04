@@ -27,12 +27,12 @@ Enforced on the server (the browser is only sent what the person may see):
 | Signed in as | Sees |
 |---|---|
 | Admin | Everything, and can edit. "Preview as <person>" shows exactly what that person sees. |
-| Club member | Every holding in Power Lunch Club deals (all members' contributions, the Year-end tab). Never individual deals they have no stake in. |
-| Anyone holding an individual deal | Every holder of that individual deal (co-investors see each other), but nothing from other individual deals. |
-| Non-member | Only what they hold: their own stake in a club deal, and the whole of any individual deal they are part of. No Year-end tab. |
+| Anyone | Every holder of any deal they hold a stake in, club or individual (you see who invested alongside you). Nothing from deals they aren't in. |
+| Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Year-end tab. |
+| Non-member | Only the deals they hold. No other club deals, no Year-end tab. |
 
-For a deal someone can only partly see, nothing that would reveal other people's amounts is sent: no deal
-total, share-of-deal %, deal value, share count, value history or notes.
+A safety net remains in the code: for any deal someone could only partly see, the server would withhold the deal
+total, share-of-deal %, deal value, share count, value history and notes. The current rule never needs it.
 
 ## How values work
 

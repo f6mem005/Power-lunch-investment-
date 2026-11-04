@@ -1,11 +1,11 @@
 // Builds exactly what one signed-in person is allowed to see. All privacy rules live here, on the server:
-//   admin               -> everything
-//   club member         -> every holding in Power Lunch Club deals
-//   anyone (any deal)   -> every holder of an INDIVIDUAL deal they hold a stake in (co-investors see each other)
-//   otherwise           -> only their OWN holdings (e.g. a non-member who holds a club deal sees just their own)
-// Individual deals they are not part of are invisible. For a deal a person can only partly see, nothing that would
-// reveal other people's amounts is sent (no deal total, no share %, no deal value or share count, no value
-// history, no notes).
+//   admin           -> everything
+//   any deal        -> every holder of any deal (club or individual) you hold a stake in: you see who invested
+//                      alongside you
+//   club member     -> additionally, every holding in every Power Lunch Club deal
+// Deals you hold no stake in, and are not a club member for, are invisible. The `partial` branch below (own stake
+// only, nothing revealing others' amounts) can no longer be reached by this rule; it is kept as a safety net so a
+// future, stricter rule cannot leak by accident.
 import type { Quote } from "./prices.mts";
 import type { Deal, Holding, Person } from "./store.mts";
 
@@ -28,7 +28,7 @@ export function buildView(viewer: Viewer, people: Person[], deals: Deal[], holdi
   const holders = new Map<string, Set<string>>();
   holdings.forEach((h) => holders.set(h.dealId, (holders.get(h.dealId) ?? new Set<string>()).add(h.personId)));
   const seesWholeDeal = (d: Deal) =>
-    isAdmin || (d.channel === "club" ? me?.type === "member" : !!me && !!holders.get(d.id)?.has(me.id));
+    isAdmin || (d.channel === "club" && me?.type === "member") || (!!me && !!holders.get(d.id)?.has(me.id));
 
   const rows = holdings.flatMap((h) => {
     const d = dealById.get(h.dealId);
