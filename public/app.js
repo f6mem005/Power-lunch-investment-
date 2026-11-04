@@ -586,11 +586,52 @@
   updateInstall();
   if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 
-  // An installed app can stay open for days: reload the numbers when it comes back to the foreground after a while.
+  // An installed app can stay open (suspended) for days. Coming back to it must not mean running old code, so on return
+  // we compare the deployed files' fingerprints with the ones this page loaded, and reload if a new version is out.
+  const WATCH = ["/", "/app.js", "/wizard.js", "/style.css"];
+  const fingerprint = async () => {
+    try {
+      const parts = await Promise.all(WATCH.map(async (u) => {
+        const r = await fetch(u, { method: "HEAD", cache: "no-store" });
+        if (!r.ok) throw new Error("bad status");
+        return r.headers.get("etag") || r.headers.get("last-modified") || r.headers.get("content-length") || "";
+      }));
+      return parts.join("|");
+    } catch { return null; }
+  };
+  let loadedFingerprint = null;
+  // On a first visit the browser installs the service worker and takes over the page, which can cancel this very
+  // first request, so keep trying for a few seconds until we have a baseline to compare against.
+  const takeBaseline = async () => {
+    for (let i = 0; i < 4 && !loadedFingerprint; i++) {
+      loadedFingerprint = await fingerprint();
+      if (!loadedFingerprint) await new Promise((r) => setTimeout(r, 1500));
+    }
+  };
+  takeBaseline();
+  let lastCheck = 0;
+  async function checkForUpdate(force = false) {
+    if (!force && Date.now() - lastCheck < 10 * 1000) return;
+    lastCheck = Date.now();
+    if (!loadedFingerprint) { await takeBaseline(); return; }
+    const f = await fingerprint();
+    if (!f || f === loadedFingerprint) return;
+    // Never wipe a form someone is filling in: tell them inside the open window, and update as soon as it closes.
+    const open = [dlg, $("#wiz")].find((d) => d.open);
+    if (open) { open.setAttribute("data-update", ""); return; }
+    location.reload();
+  }
+  [dlg, $("#wiz")].forEach((d) => d.addEventListener("close", () => { d.removeAttribute("data-update"); checkForUpdate(true); }));
+  addEventListener("pageshow", () => checkForUpdate());
+  setInterval(() => { if (document.visibilityState === "visible") checkForUpdate(); }, 5 * 60 * 1000);
+  window.__plcCheckForUpdate = checkForUpdate; // lets tests trigger a check
+
+  // Also reload the numbers when the app comes back to the foreground after a while.
   let lastSeen = Date.now();
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") lastSeen = Date.now();
-    else if (state.role && Date.now() - lastSeen > 5 * 60 * 1000 && !dlg.open && !$("#wiz").open) refresh().catch(() => {});
+    if (document.visibilityState === "hidden") { lastSeen = Date.now(); return; }
+    checkForUpdate();
+    if (state.role && Date.now() - lastSeen > 5 * 60 * 1000 && !dlg.open && !$("#wiz").open) refresh().catch(() => {});
   });
 
   // start

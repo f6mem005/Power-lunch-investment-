@@ -207,3 +207,5 @@ main { padding-bottom: max(60px, calc(env(safe-area-inset-bottom) + 24px)); }
 dialog ol { padding-left: 20px; line-height: 1.7; }
 
 @media (max-width: 700px) { .actions { flex-basis: 100%; margin-left: 0; } }
+
+dialog[data-update]::before { content: "A new version is ready. It will load when you close this window."; display: block; margin: -4px 0 12px; padding: 8px 10px; border-radius: 8px; background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; }
