@@ -180,3 +180,6 @@ a.btn { display: inline-block; text-decoration: none; }
 .previewbar { background: var(--warn-bg); color: var(--warn-ink); padding: 8px 16px; text-align: center; font-size: 14px; }
 .previewbar button { margin-left: 8px; }
 #previewSel { width: auto; padding: 4px 8px; font-size: 13px; }
+
+.bar-row .val .small { font-size: 12px; line-height: 1.2; }
+.num .small { font-size: 12px; line-height: 1.2; }

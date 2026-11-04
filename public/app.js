@@ -8,6 +8,8 @@
   const signed = (n) => (n == null ? "—" : `${n >= 0 ? "+" : "−"}${usd0.format(Math.abs(n))}`);
   const dateFmt = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—");
   const fmtShares = (n) => (n == null ? "—" : Number(n).toLocaleString("en-US", { maximumFractionDigits: 4 }));
+  // Gain as a % of dollars invested. Gain = net value (after carry) + distributions - invested.
+  const gainPct = (gain, invested) => (invested ? `${gain >= 0 ? "+" : "−"}${(Math.abs(gain / invested) * 100).toFixed(1)}%` : "—");
   const cls = (n) => (n > 0 ? "pos" : n < 0 ? "neg" : "");
 
   const state = {
@@ -102,7 +104,7 @@
       const list = state.people.filter((p) => p.type === type && (f === "all" || people[p.id].invested > 0)).sort((a, b) => people[b.id].value - people[a.id].value);
       const max = Math.max(1, ...list.map((p) => people[p.id].value));
       return `<div class="bars">${list
-        .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} value on ${money(people[p.id].invested)} invested`)}><div class="name">${esc(p.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}</div></div>`)
+        .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} net value on ${money(people[p.id].invested)} invested (${gainPct(people[p.id].gain, people[p.id].invested)} after carry)`)}><div class="name">${esc(p.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}<div class="small ${cls(people[p.id].gain)}">${gainPct(people[p.id].gain, people[p.id].invested)}</div></div></div>`)
         .join("")}</div>`;
     };
     const showWho = scopedDeals.some((d) => !d.partial);
@@ -115,7 +117,7 @@
         const gain = dd.net + dd.dist - dd.invested;
         return `<tr><td><strong>${esc(d.name)}</strong>${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}${termsText(d) ? `<div class="muted small">${esc(termsText(d))}</div>` : ""}</td>
           <td class="num">${money(dd.invested)}</td>${showShares ? `<td class="num">${d.sharesHeld ? `${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}` : "—"}</td>` : ""}<td class="num"><span ${tipAttr(`Gross ${money(dd.value)} − carry ${money(dd.carry)} = ${money(dd.net)} net`)}>${money(dd.net)}</span> ${basisBadge(dd)}</td>
-          <td class="num ${cls(gain)}">${signed(gain)}</td>${showWho ? `<td>${ownerBar(d.id)}</td>` : ""}</tr>`;
+          <td class="num ${cls(gain)}">${signed(gain)}<div class="small">${gainPct(gain, dd.invested)}</div></td>${showWho ? `<td>${ownerBar(d.id)}</td>` : ""}</tr>`;
       })
       .join("");
     return `<div class="stack">
@@ -124,7 +126,7 @@
       <div class="kpis">
         ${kpi("Total invested", money(total.invested), `${hs.length} holdings across ${scopedDeals.length} deals${total.fee ? ` · ${money(total.fee)} of it is upfront fees` : ""}`)}
         ${kpi("Current value (net)", money(total.value), `Gross ${money(total.gross)} · carry −${money(total.carry)}`)}
-        ${kpi("Gain / loss", signed(total.gain), total.invested ? `${pct(total.gain / total.invested)} on cost (incl. distributions)` : "", cls(total.gain))}
+        ${kpi("Gain / loss (net of carry)", signed(total.gain), total.invested ? `${gainPct(total.gain, total.invested)} on cost (incl. distributions)` : "", cls(total.gain))}
         ${kpi("Distributions received", money(total.distributions), "Cash returned so far")}
       </div>
       <div class="grid-2">
@@ -132,7 +134,7 @@
         ${rank("non-member") ? `<div class="card"><h2>${state.me && state.me.type === "non-member" ? "Your investments - net value" : "Not club members - net value"}</h2>${rank("non-member")}</div>` : ""}
       </div>
       <div class="card"><h2>${showWho ? "Every investment" : "Your investments"}</h2>${showWho ? legend() : ""}
-        <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th>${showShares ? '<th class="num">Shares held</th>' : ""}<th class="num">Value (net of carry)</th><th class="num">Gain / loss</th>${showWho ? "<th>Who holds it</th>" : ""}</tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Nothing to show here yet.</td></tr>'}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th>${showShares ? '<th class="num">Shares held</th>' : ""}<th class="num">Value (net of carry)</th><th class="num">Gain / loss (net of carry)</th>${showWho ? "<th>Who holds it</th>" : ""}</tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Nothing to show here yet.</td></tr>'}</tbody></table></div>
       </div></div>`;
   }
 
@@ -144,12 +146,12 @@
       .sort((a, b) => b.date.localeCompare(a.date))
       .map((h) => {
         const d = dealById(h.dealId);
-        return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td>${showShares ? `<td class="num">${h.shares != null ? `<span ${tipAttr("Shares held by the whole deal, split by dollars invested")}>${fmtShares(h.shares)}</span>` : "—"}</td>` : ""}<td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span> ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}</td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`;
+        return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td>${showShares ? `<td class="num">${h.shares != null ? `<span ${tipAttr("Shares held by the whole deal, split by dollars invested")}>${fmtShares(h.shares)}</span>` : "—"}</td>` : ""}<td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span> ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}<div class="small">${gainPct(h.gain, h.invested)}</div></td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`;
       })
       .join("");
     return `<div class="card"><div class="person-head"><h3><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}${state.role === "admin" ? ` <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button>` : ""}</h3>
-      <span class="muted">${money(t.invested)} invested · <strong>${money(t.value)}</strong> now · <span class="${cls(t.gain)}">${signed(t.gain)}</span></span></div>
-      <div class="table-wrap"><table><thead><tr><th>Deal</th><th>Date</th><th class="num">Invested</th><th class="num">Share of deal</th>${showShares ? '<th class="num">Shares</th>' : ""}<th class="num">Value (net)</th><th class="num">Gain / loss</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead>
+      <span class="muted">${money(t.invested)} invested · <strong>${money(t.value)}</strong> now · <span class="${cls(t.gain)}">${signed(t.gain)} (${gainPct(t.gain, t.invested)})</span></span></div>
+      <div class="table-wrap"><table><thead><tr><th>Deal</th><th>Date</th><th class="num">Invested</th><th class="num">Share of deal</th>${showShares ? '<th class="num">Shares</th>' : ""}<th class="num">Value (net)</th><th class="num">Gain / loss (net of carry)</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead>
       <tbody>${rows || '<tr><td colspan="6" class="muted">No holdings yet.</td></tr>'}</tbody></table></div></div>`;
   }
   function people() {
@@ -172,7 +174,7 @@
         const gain = dd.net + dd.dist - dd.invested;
         return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
           <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
-          <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : d.ticker ? "Shares held: <strong>not entered yet</strong> · " : ""}Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)}</span></p>
+          <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : d.ticker ? "Shares held: <strong>not entered yet</strong> · " : ""}Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, dd.invested)}) net of carry</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
           ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
           ${d.ticker && !d.needsShares && !d.price ? `<p class="muted">Live price unavailable: ${esc(d.priceError || state.priceErrors[d.ticker] || "still checking")}</p>` : ""}
