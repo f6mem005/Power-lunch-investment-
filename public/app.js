@@ -549,6 +549,41 @@
   $("#addInvBtn").onclick = () => window.PLC.wizard.addInvestment();
   window.PLC = { state, api, refresh, esc, money, today, dealById, personById };
 
+  // ---------- installable app ----------
+  const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  let installEvent = null;
+  const updateInstall = () => { $("#installBtn").hidden = standalone() || !(installEvent || isIOS()); };
+  addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installEvent = e; updateInstall(); });
+  addEventListener("appinstalled", () => { installEvent = null; updateInstall(); });
+  $("#installBtn").onclick = async () => {
+    if (installEvent) {
+      installEvent.prompt();
+      await installEvent.userChoice.catch(() => {});
+      installEvent = null;
+      updateInstall();
+      return;
+    }
+    dlg.innerHTML = `<h2>Add to your Home Screen</h2>
+      <ol><li>Open this page in <strong>Safari</strong>.</li><li>Tap the <strong>Share</strong> button (the square with an arrow pointing up).</li><li>Scroll down and tap <strong>Add to Home Screen</strong>.</li><li>Tap <strong>Add</strong>.</li></ol>
+      <p class="muted">You'll sign in once inside the new app.</p>
+      <div class="row-actions"><button class="btn primary" type="button" data-close>Got it</button></div>`;
+    $("[data-close]", dlg).onclick = () => dlg.close();
+    dlg.showModal();
+  };
+  updateInstall();
+  if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+
+  // An installed app can stay open for days: reload the numbers when it comes back to the foreground after a while.
+  let lastSeen = Date.now();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") lastSeen = Date.now();
+    else if (state.role && Date.now() - lastSeen > 5 * 60 * 1000 && !dlg.open && !$("#wiz").open) refresh().catch(() => {});
+  });
+
   // start
-  api("/api/session").then((s) => (s.role ? showApp() : showLogin())).catch(showLogin);
+  api("/api/session").then((s) => (s.role ? showApp() : showLogin())).catch(() => {
+    showLogin();
+    $("#loginError").textContent = "Can't reach the server. Check your connection and reload.";
+  });
 })();

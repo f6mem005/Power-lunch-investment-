@@ -65,7 +65,7 @@ h3 { font-size: 16px; }
 #tabs a { padding: 6px 12px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-weight: 500; }
 #tabs a:hover { background: var(--grid); }
 #tabs a[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
-.actions { display: flex; gap: 8px; align-items: center; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--axis); color: var(--ink-2); white-space: nowrap; }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
 .badge.live { color: var(--good); border-color: var(--good); }
@@ -191,3 +191,10 @@ a.link:hover { color: var(--accent); text-decoration-style: solid; }
 .card[id] { scroll-margin-top: 90px; }
 @keyframes flashring { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
 .card.flash { animation: flashring 2s ease-out; }
+
+/* installed app: keep content clear of the notch and the home indicator */
+.topbar { padding-top: max(12px, env(safe-area-inset-top)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+main { padding-bottom: max(60px, calc(env(safe-area-inset-bottom) + 24px)); }
+dialog ol { padding-left: 20px; line-height: 1.7; }
+
+@media (max-width: 700px) { .actions { flex-basis: 100%; margin-left: 0; } }

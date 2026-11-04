@@ -75,3 +75,13 @@ The Year-end tab shows, for Power Lunch Club deals only (Individual deals are ex
 had invested in total at each 12/31 (and "to date" for the current year), their % of the club, and what went in
 during the year. Amounts are cost by investment date, including upfront fees. Download CSV exports all years.
 Non-member holders in club deals are listed separately and are not counted in the totals or percentages.
+
+## Install as an app (Home Screen)
+
+The site is an installable web app: `manifest.webmanifest`, icons in `public/icons/`, and `sw.js`. The service
+worker keeps only the page shell (HTML, CSS, JS, icons) for offline use and never stores `/api/` or `/auth/`
+responses, so no investment data or sign-in is cached on the device.
+
+- **iPhone / iPad:** open the site in Safari, tap Share, then Add to Home Screen.
+- **Android / desktop Chrome or Edge:** use the Install app button in the header (or the browser menu).
+- The installed app has its own storage on iOS, so each person signs in once inside it.

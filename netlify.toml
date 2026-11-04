@@ -3,3 +3,15 @@
 
 [functions]
   directory = "netlify/functions"
+
+# The service worker and manifest must always be re-checked so app updates reach installed copies.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+    Cache-Control = "no-cache"
