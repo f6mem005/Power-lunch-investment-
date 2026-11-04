@@ -39,7 +39,7 @@ export function buildView(viewer: Viewer, people: Person[], deals: Deal[], holdi
     const gross = valuation(d).value * share;
     const fee = h.invested * ((d.mgmtFeePct || 0) / 100);
     const carry = ((d.carryPct || 0) / 100) * Math.max(0, gross + h.distributions - h.invested); // % of profit, no hurdle
-    return [{ id: h.id, dealId: h.dealId, personId: h.personId, date: h.date, invested: h.invested, distributions: h.distributions, gross, fee, carry, value: gross - carry, share: seesWholeDeal(d) ? share : null }];
+    return [{ id: h.id, dealId: h.dealId, personId: h.personId, date: h.date, invested: h.invested, distributions: h.distributions, gross, fee, carry, value: gross - carry, share: seesWholeDeal(d) ? share : null, shares: seesWholeDeal(d) && d.sharesHeld ? d.sharesHeld * share : null }];
   });
 
   const dealIds = new Set(rows.map((r) => r.dealId));
