@@ -410,9 +410,9 @@
     document.querySelector('#tabs a[data-tab="yearend"]').hidden = !canYearEnd();
     $("#roleBadge").textContent = state.role === "admin" ? "Admin" : state.me ? `Signed in as ${state.me.name}` : "";
     const sel = $("#previewSel");
-    sel.hidden = !isAdminSession();
+    $("#previewWrap").hidden = !isAdminSession();
     if (isAdminSession()) {
-      sel.innerHTML = `<option value="">Admin view</option>${state.adminPeople.map((p) => `<option value="${esc(p.id)}"${state.previewOf === p.id ? " selected" : ""}>Preview as ${esc(p.name)}</option>`).join("")}`;
+      sel.innerHTML = `<option value="">Admin view</option>${state.adminPeople.map((p) => `<option value="${esc(p.id)}"${state.previewOf === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("")}`;
     }
     const bar = $("#previewBar");
     bar.hidden = !state.previewOf;
