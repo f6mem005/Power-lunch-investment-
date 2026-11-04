@@ -87,7 +87,10 @@
       .map((h) => `<span style="flex:${h.invested};background:${color(h.personId)}" ${tipAttr(`${personById(h.personId)?.name}: ${money(h.invested)} (${pct(h.invested / total, 0)})`)}></span>`)
       .join("")}</div>`;
   }
-  const legend = () => `<div class="legend">${state.people.map((p) => `<span><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}${p.type === "non-member" ? " (non-member)" : ""}</span>`).join("")}</div>`;
+  // Links used on the Overview: jump to the matching card on the Deals / People tab.
+  const dealLink = (d) => `<a class="link" href="#deals/${esc(d.id)}">${esc(d.name)}</a>`;
+  const personLink = (p) => `<a class="link" href="#people/${esc(p.id)}">${esc(p.name)}</a>`;
+  const legend = () => `<div class="legend">${state.people.map((p) => `<span><i class="sw" style="background:${color(p.id)}"></i>${personLink(p)}${p.type === "non-member" ? " (non-member)" : ""}</span>`).join("")}</div>`;
 
   // ---------- views ----------
   function overview() {
@@ -104,7 +107,7 @@
       const list = state.people.filter((p) => p.type === type && (f === "all" || people[p.id].invested > 0)).sort((a, b) => people[b.id].value - people[a.id].value);
       const max = Math.max(1, ...list.map((p) => people[p.id].value));
       return `<div class="bars">${list
-        .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} net value on ${money(people[p.id].invested)} invested (${gainPct(people[p.id].gain, people[p.id].invested)} after carry)`)}><div class="name">${esc(p.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}<div class="small ${cls(people[p.id].gain)}">${gainPct(people[p.id].gain, people[p.id].invested)}</div></div></div>`)
+        .map((p) => `<div class="bar-row" ${tipAttr(`${p.name}: ${money(people[p.id].value)} net value on ${money(people[p.id].invested)} invested (${gainPct(people[p.id].gain, people[p.id].invested)} after carry)`)}><div class="name">${personLink(p)}</div><div class="bar-track"><div class="bar-fill" style="width:${(people[p.id].value / max) * 100}%"></div></div><div class="val">${money(people[p.id].value)}<div class="small ${cls(people[p.id].gain)}">${gainPct(people[p.id].gain, people[p.id].invested)}</div></div></div>`)
         .join("")}</div>`;
     };
     const showWho = scopedDeals.some((d) => !d.partial);
@@ -115,7 +118,7 @@
       .map((d) => {
         const dd = deals[d.id];
         const gain = dd.net + dd.dist - dd.invested;
-        return `<tr><td><strong>${esc(d.name)}</strong>${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}${termsText(d) ? `<div class="muted small">${esc(termsText(d))}</div>` : ""}</td>
+        return `<tr><td><strong>${dealLink(d)}</strong>${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}${termsText(d) ? `<div class="muted small">${esc(termsText(d))}</div>` : ""}</td>
           <td class="num">${money(dd.invested)}</td>${showShares ? `<td class="num">${d.sharesHeld ? `${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}` : "—"}</td>` : ""}<td class="num"><span ${tipAttr(`Gross ${money(dd.value)} − carry ${money(dd.carry)} = ${money(dd.net)} net`)}>${money(dd.net)}</span> ${basisBadge(dd)}</td>
           <td class="num ${cls(gain)}">${signed(gain)}<div class="small">${gainPct(gain, dd.invested)}</div></td>${showWho ? `<td>${ownerBar(d.id)}</td>` : ""}</tr>`;
       })
@@ -149,7 +152,7 @@
         return `<tr><td>${esc(d?.name)}${channelPill(d)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${pct(h.share)}</td>${showShares ? `<td class="num">${h.shares != null ? `<span ${tipAttr("Shares held by the whole deal, split by dollars invested")}>${fmtShares(h.shares)}</span>` : "—"}</td>` : ""}<td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span> ${basisBadge(state.d.deals[h.dealId])}</td><td class="num ${cls(h.gain)}">${signed(h.gain)}<div class="small">${gainPct(h.gain, h.invested)}</div></td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`;
       })
       .join("");
-    return `<div class="card"><div class="person-head"><h3><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}${state.role === "admin" ? ` <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button>` : ""}</h3>
+    return `<div class="card" id="person-${esc(p.id)}"><div class="person-head"><h3><i class="sw" style="background:${color(p.id)}"></i>${esc(p.name)}${state.role === "admin" ? ` <button class="btn small ghost" data-edit-person="${esc(p.id)}">Edit</button>` : ""}</h3>
       <span class="muted">${money(t.invested)} invested · <strong>${money(t.value)}</strong> now · <span class="${cls(t.gain)}">${signed(t.gain)} (${gainPct(t.gain, t.invested)})</span></span></div>
       <div class="table-wrap"><table><thead><tr><th>Deal</th><th>Date</th><th class="num">Invested</th><th class="num">Share of deal</th>${showShares ? '<th class="num">Shares</th>' : ""}<th class="num">Value (net)</th><th class="num">Gain / loss (net of carry)</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead>
       <tbody>${rows || '<tr><td colspan="6" class="muted">No holdings yet.</td></tr>'}</tbody></table></div></div>`;
@@ -172,7 +175,7 @@
         const dd = state.d.deals[d.id];
         const hs = state.d.holdings.filter((h) => h.dealId === d.id).sort((a, b) => b.invested - a.invested);
         const gain = dd.net + dd.dist - dd.invested;
-        return `<div class="card"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
+        return `<div class="card" id="deal-${esc(d.id)}"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
           <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : d.ticker ? "Shares held: <strong>not entered yet</strong> · " : ""}Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, dd.invested)}) net of carry</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
@@ -396,7 +399,8 @@
     return { all: "My investments" };
   }
   function render() {
-    let tab = (location.hash || "#overview").slice(1);
+    const [rawTab, focusId] = (location.hash || "#overview").slice(1).split("/");
+    let tab = rawTab;
     if (!views[tab] || (tab === "admin" && state.role !== "admin") || (tab === "yearend" && !canYearEnd())) tab = "overview";
     const scopes = allowedScopes();
     if (!scopes[state.scope]) { state.scope = Object.keys(scopes)[0]; derive(); }
@@ -417,6 +421,16 @@
     $("#scopeBar").innerHTML = `<span class="muted">Show</span>${keys.map((k) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${esc(scopes[k])}</button>`).join("")}`;
     $("#scopeBar").hidden = tab === "yearend" || keys.length < 2;
     view.innerHTML = views[tab]();
+    // Arrived from a link on the Overview: scroll to that deal/person and flash it once (not again on later refreshes).
+    if (focusId && state.focusShown !== location.hash) {
+      const el = document.getElementById(`${tab === "deals" ? "deal" : "person"}-${focusId}`);
+      if (el) {
+        state.focusShown = location.hash;
+        el.scrollIntoView({ block: "start" });
+        el.classList.add("flash");
+        setTimeout(() => el.classList.remove("flash"), 2000);
+      }
+    }
   }
 
   async function refresh(afterPrices = false) {

@@ -183,3 +183,9 @@ a.btn { display: inline-block; text-decoration: none; }
 
 .bar-row .val .small { font-size: 12px; line-height: 1.2; }
 .num .small { font-size: 12px; line-height: 1.2; }
+
+a.link { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; cursor: pointer; }
+a.link:hover { color: var(--accent); text-decoration-style: solid; }
+.card[id] { scroll-margin-top: 90px; }
+@keyframes flashring { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
+.card.flash { animation: flashring 2s ease-out; }
