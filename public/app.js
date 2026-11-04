@@ -140,7 +140,7 @@
           : `${rank((p) => p.type === "member") ? `<div class="card"><h2>Club members - net value</h2>${rank((p) => p.type === "member")}</div>` : ""}
         ${rank((p) => p.type !== "member") ? `<div class="card"><h2>${state.me && state.me.type === "non-member" ? "Your investments - net value" : "Other investors - net value"}</h2>${rank((p) => p.type !== "member")}</div>` : ""}`}
       </div>
-      <div class="card"><h2>${showWho ? "Every investment" : "Your investments"}</h2>${showWho ? legend() : ""}
+      <div class="card"><h2>${showWho ? "All investments" : "Your investments"}</h2>${showWho ? legend() : ""}
         <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th>${showShares ? '<th class="num">Shares held</th>' : ""}<th class="num">Value (net of carry)</th><th class="num">Gain / loss (net of carry)</th>${showWho ? "<th>Who holds it</th>" : ""}</tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Nothing to show here yet.</td></tr>'}</tbody></table></div>
       </div></div>`;
   }
