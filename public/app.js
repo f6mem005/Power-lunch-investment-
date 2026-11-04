@@ -134,7 +134,7 @@
       </div>
       <div class="grid-2">
         ${rank("member") ? `<div class="card"><h2>Club members - net value</h2>${rank("member")}</div>` : ""}
-        ${rank("non-member") ? `<div class="card"><h2>${state.me && state.me.type === "non-member" ? "Your investments - net value" : "Not club members - net value"}</h2>${rank("non-member")}</div>` : ""}
+        ${rank("non-member") ? `<div class="card"><h2>${state.me && state.me.type === "non-member" ? "Your investments - net value" : "Other investors - net value"}</h2>${rank("non-member")}</div>` : ""}
       </div>
       <div class="card"><h2>${showWho ? "Every investment" : "Your investments"}</h2>${showWho ? legend() : ""}
         <div class="table-wrap"><table><thead><tr><th>Deal</th><th class="num">Invested</th>${showShares ? '<th class="num">Shares held</th>' : ""}<th class="num">Value (net of carry)</th><th class="num">Gain / loss (net of carry)</th>${showWho ? "<th>Who holds it</th>" : ""}</tr></thead><tbody>${rows || '<tr><td colspan="5" class="muted">Nothing to show here yet.</td></tr>'}</tbody></table></div>
@@ -163,7 +163,7 @@
     const others = state.people.filter((p) => p.type !== "member" && has(p));
     return `<div class="stack"><div class="section-head"><h2>Club members</h2><span class="muted">${members.length} members</span></div>
       ${members.map(peopleCard).join("") || '<p class="muted">No members.</p>'}
-      <div class="section-head"><h2>Not club members</h2><span class="muted">${others.length} ${others.length === 1 ? "person" : "people"}</span></div>
+      <div class="section-head"><h2>Other investors</h2><span class="muted">${others.length} ${others.length === 1 ? "person" : "people"}</span></div>
       ${others.map(peopleCard).join("") || '<p class="muted">No non-members.</p>'}</div>`;
   }
 
