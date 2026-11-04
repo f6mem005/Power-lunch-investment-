@@ -2,7 +2,7 @@ import type { Config } from "@netlify/functions";
 import { clearCookie, hashPasscode, readSession } from "./lib/auth.mts";
 import type { Session } from "./lib/auth.mts";
 import { cachedQuotes, getQuotes, validSymbol } from "./lib/prices.mts";
-import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne } from "./lib/store.mts";
+import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne, runCleanup } from "./lib/store.mts";
 import type { AuthRecord, Deal, Holding, Person } from "./lib/store.mts";
 import { buildView } from "./lib/view.mts";
 import type { Viewer } from "./lib/view.mts";
@@ -110,6 +110,7 @@ export default async (req: Request) => {
   try {
     if (resource === "data" && method === "GET") {
       await ensureSeeded();
+      await runCleanup();
       const view = await loadView(await viewerFor());
       const extra: Record<string, unknown> = {};
       if (isAdmin && !url.searchParams.get("as")) {

@@ -8,12 +8,12 @@
     { "id": "ed", "name": "Ed", "type": "non-member", "order": 6 }
   ],
   "deals": [
-    { "id": "spacex-2024", "name": "SpaceX 2024", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 22500, "valueSource": "placeholder", "valueAsOf": null, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
-    { "id": "openai", "name": "OpenAI", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 18900, "valueSource": "placeholder", "valueAsOf": null, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
-    { "id": "anthropic", "name": "Anthropic", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 13500, "valueSource": "placeholder", "valueAsOf": null, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
-    { "id": "forterra", "name": "Forterra", "channel": "individual", "ticker": null, "sharesHeld": null, "manualValue": 9000, "valueSource": "placeholder", "valueAsOf": null, "notes": "Made by individuals, outside the club. Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
-    { "id": "spacex-2026", "name": "SpaceX 2026", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 22500, "valueSource": "placeholder", "valueAsOf": null, "notes": "Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] },
-    { "id": "xai", "name": "SpaceX 'xAI'", "channel": "individual", "ticker": "SPCX", "sharesHeld": null, "manualValue": 18000, "valueSource": "placeholder", "valueAsOf": null, "notes": "Originally an xAI investment. xAI merged with SpaceX, and the position is now SpaceX stock (SPCX). Made by individuals, outside the club. Imported value is the spreadsheet's flat 90%-of-cost placeholder.", "valueHistory": [] }
+    { "id": "spacex-2024", "name": "SpaceX 2024", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 22500, "valueSource": "placeholder", "valueAsOf": null, "notes": "", "valueHistory": [] },
+    { "id": "openai", "name": "OpenAI", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 18900, "valueSource": "placeholder", "valueAsOf": null, "notes": "", "valueHistory": [] },
+    { "id": "anthropic", "name": "Anthropic", "channel": "club", "ticker": null, "sharesHeld": null, "manualValue": 13500, "valueSource": "placeholder", "valueAsOf": null, "notes": "", "valueHistory": [] },
+    { "id": "forterra", "name": "Forterra", "channel": "individual", "ticker": null, "sharesHeld": null, "manualValue": 9000, "valueSource": "placeholder", "valueAsOf": null, "notes": "", "valueHistory": [] },
+    { "id": "spacex-2026", "name": "SpaceX 2026", "channel": "club", "ticker": "SPCX", "sharesHeld": null, "manualValue": 22500, "valueSource": "placeholder", "valueAsOf": null, "notes": "", "valueHistory": [] },
+    { "id": "xai", "name": "SpaceX (formerly xAI after merger)", "channel": "individual", "ticker": "SPCX", "sharesHeld": null, "manualValue": 18000, "valueSource": "placeholder", "valueAsOf": null, "notes": "", "valueHistory": [] }
   ],
   "holdings": [
     { "id": "h01", "dealId": "spacex-2024", "personId": "manny", "date": "2024-10-02", "invested": 5000, "distributions": 0 },
