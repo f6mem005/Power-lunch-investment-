@@ -312,6 +312,14 @@
     await api(`/api/deals/${id}${hs.length ? "?cascade=1" : ""}`, { method: "DELETE" });
     return true;
   }
+  // Easy to say and remember: 3 consonant+vowel syllables and 2 digits, 8 characters, e.g. "rakobu47".
+  // Letters that are easy to confuse (l, q, w, x, y, c, j) are left out.
+  function makePasscode() {
+    const pick = (set) => set[crypto.getRandomValues(new Uint32Array(1))[0] % set.length];
+    let out = "";
+    for (let i = 0; i < 3; i++) out += pick("bdfghkmnprstvz") + pick("aeiou");
+    return out + pick("23456789") + pick("23456789");
+  }
   function editPerson(id) {
     const p = personById(id);
     const n = state.holdings.filter((h) => h.personId === id).length;
@@ -321,7 +329,7 @@
       <label for="p-type">Status</label><select id="p-type" name="type"><option value="member"${p.type === "member" ? " selected" : ""}>Club member</option><option value="non-member"${p.type !== "member" ? " selected" : ""}>Not a club member</option></select>
       <label for="p-code">Sign-in passcode</label>
       <div class="inv-row" style="grid-template-columns:1fr auto auto"><input id="p-code" name="passcode" autocomplete="off" spellcheck="false" placeholder="${state.passcodes[id] ? "Set. Type a new one to replace it" : "Not set. This person can't sign in yet"}"><button type="button" class="btn small" data-gen>Generate</button>${state.passcodes[id] ? '<button type="button" class="btn small danger" data-rmcode>Remove</button>' : ""}</div>
-      <p class="muted">At least 8 characters. It's stored scrambled and can't be shown again, so copy it before saving and send it to ${esc(p.name)} privately. Changing or removing it signs them out. They sign in with their name (${esc(p.name)}) and this passcode.</p>
+      <p class="muted">At least 8 characters. Generate makes an easy-to-say 8-character code (like rakobu47). It's stored scrambled and can't be shown again, so copy it before saving and send it to ${esc(p.name)} privately. Changing or removing it signs them out. They sign in with their name (${esc(p.name)}) and this passcode.</p>
       <p class="muted">${n ? `${n} holding${n === 1 ? "" : "s"}. To delete this person, delete or reassign their holdings first.` : "No holdings, so this person can be deleted."}</p>`,
       async (f) => {
         await api(`/api/people/${id}`, { method: "PUT", body: { name: f.name, type: f.type } });
@@ -329,11 +337,7 @@
       },
       { label: "Delete person", run: async () => { if (!confirm(`Delete ${p.name}? This can't be undone.`)) return false; await api(`/api/people/${id}`, { method: "DELETE" }); return true; } },
     );
-    $("[data-gen]", dlg).onclick = () => {
-      const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      const bytes = crypto.getRandomValues(new Uint8Array(12));
-      $("#p-code", dlg).value = [...bytes].map((b) => chars[b % chars.length]).join("");
-    };
+    $("[data-gen]", dlg).onclick = () => { $("#p-code", dlg).value = makePasscode(); };
     $("[data-rmcode]", dlg)?.addEventListener("click", async () => {
       if (!confirm(`Remove ${p.name}'s sign-in? They won't be able to sign in until you set a new passcode.`)) return;
       try { await api(`/api/people/${id}/passcode`, { method: "DELETE" }); dlg.close(); await refresh(); } catch (err) { $("[data-err]", dlg).textContent = err.message; }
