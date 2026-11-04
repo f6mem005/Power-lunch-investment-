@@ -11,7 +11,7 @@
 
   const state = {
     scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
-    role: null, me: null, previewOf: null, passcodes: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
+    role: null, me: null, previewOf: null, passcodes: {}, priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
   };
 
   async function api(path, opts = {}) {
@@ -171,8 +171,8 @@
           <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)}</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
-          ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError ? ` (Price lookup: ${esc(d.priceError)})` : ""}</p>` : ""}
-          ${d.ticker && !d.needsShares && !d.price ? `<p class="muted">Live price unavailable: ${esc(d.priceError || "no data")}</p>` : ""}
+          ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
+          ${d.ticker && !d.needsShares && !d.price ? `<p class="muted">Live price unavailable: ${esc(d.priceError || state.priceErrors[d.ticker] || "still checking")}</p>` : ""}
           ${d.notes ? `<p class="muted">${esc(d.notes)}</p>` : ""}
           <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th>${d.partial ? "" : '<th class="num">Share</th>'}<th class="num">Value (net)</th><th class="num">Distributions</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead><tbody>
           ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td>${d.partial ? "" : `<td class="num">${pct(h.share)}</td>`}<td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span></td><td class="num">${money(h.distributions)}</td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`).join("")}
@@ -424,7 +424,10 @@
     // Live prices refresh separately so a slow quote provider never blocks the page; reload once if any price moved.
     if (!afterPrices && state.deals.some((d) => d.ticker)) {
       api(`/api/prices${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`).then((q) => {
+        // Keep the provider's own error text so the Deals tab can say why a price is missing.
+        state.priceErrors = Object.fromEntries(Object.entries(q).filter(([, v]) => v.price == null).map(([k, v]) => [k, `${v.error || "no price returned"} (source: ${v.source})`]));
         if (Object.keys(q).some((k) => (q[k].price ?? null) !== (state.quotes[k]?.price ?? null))) refresh(true);
+        else render();
       }).catch(() => {});
     }
   }
