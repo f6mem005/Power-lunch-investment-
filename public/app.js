@@ -425,7 +425,7 @@
         <div><label for="e-name">Name</label><input id="e-name" name="name" value="${esc(d.name)}" required></div>
         <div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Power Lunch Club</option><option value="individual"${d.channel === "individual" ? " selected" : ""}>Individual</option></select></div>
         <div><label for="e-tk">Ticker (if public)</label><input id="e-tk" name="ticker" value="${esc(d.ticker || "")}"></div>
-        <div><label for="e-sh">Shares held (whole deal)</label><div style="display:flex;gap:8px;align-items:center"><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}" style="flex:1;min-width:0"><button class="btn small" type="button" id="sp-open" aria-expanded="false" aria-controls="sp-panel">Record split</button></div></div>
+        <div><label for="e-sh">Shares held (whole deal)</label><div style="display:flex;gap:8px;align-items:center"><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}" style="flex:1;min-width:0"><button class="btn small" type="button" id="sp-open" aria-expanded="false" aria-controls="sp-panel">Record a split…</button></div></div>
         <div id="sp-panel" hidden style="grid-column:1/-1;margin:10px 0 4px;border:1px solid var(--grid);border-radius:10px;padding:12px">
           <strong>Record a stock split</strong>
           ${!d.sharesHeld
@@ -438,7 +438,8 @@
             <div><label for="sp-date">Date of the split</label><input id="sp-date" type="date" max="${today()}" value="${today()}"></div>
           </div>
           <p id="sp-prev" class="muted"></p>
-          <button class="btn" type="button" id="sp-run">Record split</button>`}
+          <p id="sp-err" class="error" role="alert"></p>
+          <button class="btn" type="button" id="sp-run">Save this split</button>`}
         </div>
         <div><label for="e-fee">Upfront mgmt fee (% of amount invested)</label><input id="e-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01" value="${d.mgmtFeePct ?? ""}"></div>
         <div><label for="e-carry">Carry (% of profit)</label><input id="e-carry" name="carryPct" type="number" min="0" max="100" step="0.01" value="${d.carryPct ?? ""}"></div>
@@ -470,21 +471,22 @@
       const formState = () => JSON.stringify([...new FormData($("#dlgForm", dlg))]);
       const openState = formState();
       const record = async () => {
+        if (run.disabled) return;                       // one request at a time (Enter held down repeats)
         const to = Number($("#sp-to", dlg).value), from = Number($("#sp-from", dlg).value), date = $("#sp-date", dlg).value;
-        const err = $("[data-err]", dlg);
+        const err = $("#sp-err", dlg), save = $("#dlgForm button[type=submit]", dlg);
         if (!(to > 0) || !(from > 0)) { err.textContent = "Enter the split as two numbers above zero, e.g. 2 new shares for every 1 old share."; return; }
         if (!date || date > today()) { err.textContent = "Choose the date of the split (it can't be in the future)."; return; }
         if (formState() !== openState && !confirm("You have unsaved changes in this window. Recording the split saves right away and discards them. Record the split anyway?")) return;
-        run.disabled = true; err.textContent = "";
+        run.disabled = save.disabled = true; err.textContent = "";   // Save is held too, so it can't write the old share count over the new one
         try {
           await api(`/api/deals/${id}/split`, { method: "POST", body: { to, from, date } });
-        } catch (e) { err.textContent = e.message; run.disabled = false; return; }
+        } catch (e) { err.textContent = e.message; run.disabled = save.disabled = false; return; }
         dlg.close();
         try { await refresh(); } catch { setTimeout(() => refresh(false, true).catch(() => {}), 3000); }   // the split is saved; only the reload failed
       };
       run.onclick = record;
       // Enter in a split box records the split; it must not save the rest of the Edit deal form.
-      for (const el of [$("#sp-to", dlg), $("#sp-from", dlg), $("#sp-date", dlg)]) el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); record(); } });
+      for (const el of [$("#sp-to", dlg), $("#sp-from", dlg), $("#sp-date", dlg)]) el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); if (!e.repeat) record(); } });
     }
   }
   function editHolding(id) {
