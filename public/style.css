@@ -1,4 +1,5 @@
 :root {
+  --title-edge: #0a1a33;   /* the title bar's dark edge; also the colour behind the page when it is pulled past the top */
   color-scheme: light;
   --page: #f9f9f7;
   --surface: #fcfcfb;
@@ -41,10 +42,13 @@
 
 * { box-sizing: border-box; }
 html { background: var(--page); }
+/* While the page is at its very top, the area revealed by an elastic pull-down is the title bar's colour (not on the sign-in screen). */
+html[data-top]:not(:has(#login:not([hidden]))) { background: var(--title-edge); }
 body {
   margin: 0; background: var(--page); color: var(--ink);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+@supports (min-height: 100dvh) { body { min-height: 100dvh; } }   /* fills the screen, so the colour behind the page never shows below a short page (not on old phones, where it would make short pages scroll) */
 [hidden] { display: none !important; }
 h1, h2, h3 { margin: 0; line-height: 1.25; }
 h2 { font-size: 18px; margin-bottom: 12px; }
@@ -58,7 +62,7 @@ h3 { font-size: 16px; }
 /* Title page: the name of the app on its own, with the navigation underneath */
 .titlebar {
   text-align: center; color: #fff;
-  background: linear-gradient(135deg, #0a1a33 0%, #123a6b 60%, #1f5fb8 100%);
+  background: linear-gradient(135deg, var(--title-edge) 0%, #123a6b 60%, #1f5fb8 100%);
   padding: max(22px, env(safe-area-inset-top)) 16px 20px;
 }
 .titlebar .logo { display: block; margin: 0 auto 8px; width: 44px; height: 44px; border-radius: 11px; }

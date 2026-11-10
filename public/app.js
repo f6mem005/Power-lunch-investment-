@@ -26,10 +26,23 @@
     Object.assign(document.body.style, { position: "", top: "", left: "", right: "", width: "" });
     window.scrollTo(0, lockedAt);
     lockedAt = null;
+    markTop();
   };
   const nativeShowModal = HTMLDialogElement.prototype.showModal;
   HTMLDialogElement.prototype.showModal = function () { lockPage(); return nativeShowModal.call(this); };
   document.addEventListener("close", () => { if (!document.querySelector("dialog[open]")) unlockPage(); }, true);
+
+  // Pulling the page past its top edge (the elastic bounce on iPhone) reveals whatever colour is behind the page. Keep that the
+  // title bar's blue while the page is at the top, so the stretch looks attached to the header instead of a pale gap that floats.
+  // Only on a page that can actually scroll (on a short page the same colour would show at the bottom edge too).
+  const markTop = () => {
+    const root = document.documentElement;
+    root.toggleAttribute("data-top", window.scrollY <= 0 && lockedAt === null && root.scrollHeight > window.innerHeight + 1);
+  };
+  window.addEventListener("scroll", markTop, { passive: true });
+  window.addEventListener("resize", markTop);
+  window.addEventListener("pageshow", markTop);
+  markTop();
 
   const state = {
     scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
@@ -517,6 +530,7 @@
         setTimeout(() => el.classList.remove("flash"), 2000);
       }
     }
+    markTop(); // the page may now be taller or shorter than the screen
   }
 
   // A background update (prices arriving, the app coming back to the foreground) rebuilds the page. Anything typed into a form
