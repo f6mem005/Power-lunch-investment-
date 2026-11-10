@@ -3,7 +3,7 @@ import { clearCookie, hashPasscode, readSession } from "./lib/auth.mts";
 import type { Session } from "./lib/auth.mts";
 import { todayStr as today } from "./lib/dates.mts";
 import { cachedQuotes, getQuotes, validSymbol } from "./lib/prices.mts";
-import { checkSplits } from "./lib/splits.mts";
+import { applySplit, checkSplits, ratioOk, splitKey } from "./lib/splits.mts";
 import type { SplitStatus } from "./lib/splits.mts";
 import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne, store } from "./lib/store.mts";
 import type { AuthRecord, Deal, Holding, Person } from "./lib/store.mts";
@@ -69,10 +69,15 @@ async function assertUniqueDealName(name: string, exceptId?: string, existing?: 
 }
 // `today()` is the date in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
 // The date a share count is valid from: never in the future (a future date would hide real splits).
-const sharesDate = (v: unknown) => {
-  const s = dateStr(v, "Share count as-of date");
-  if (s > today()) bad("Share count as-of date can't be in the future");
+const pastDate = (v: unknown, name: string) => {
+  const s = dateStr(v, name);
+  if (s > today()) bad(`${name} can't be in the future`);
   return s;
+};
+const sharesDate = (v: unknown) => pastDate(v, "Share count as-of date");
+const posNum = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n <= 1e6 ? n : NaN;
 };
 
 function buildDeal(body: any): Deal {
@@ -218,6 +223,21 @@ export default async (req: Request) => {
     }
 
     if (resource === "deals") {
+      // Record a stock split by hand (for deals that are not public, so there is no automatic check).
+      if (id && parts[2] === "split" && method === "POST") {
+        const d = await getOne<Deal>(KINDS.deal, id);
+        if (!d) return fail("Not found", 404);
+        if (d.ticker) bad("This deal has a ticker, so its splits are applied automatically");
+        if (!d.sharesHeld) bad("Enter this deal's share (or unit) count first, then record the split");
+        const split = { date: pastDate(body.date, "Split date"), from: posNum(body.from), to: posNum(body.to) };
+        if (Number.isNaN(split.from) || Number.isNaN(split.to)) bad("Enter the split as two positive numbers, e.g. 2 new shares for every 1 old share");
+        if (!ratioOk(split)) bad("That split ratio doesn't look right (it must change the share count, and by no more than 1000 times)");
+        if ((d.splitLog ?? []).some((x) => splitKey(x) === splitKey(split))) bad("That split has already been recorded for this deal");
+        if (!applySplit(d, split, "Recorded by admin")) bad("That split would leave no shares");
+        d.sharesAsOf = today(); // the count is now current, so it is valid from today
+        await putOne(KINDS.deal, d);
+        return json(d);
+      }
       if (method === "POST") {
         const deal = buildDeal(body);
         await assertUniqueDealName(deal.name);

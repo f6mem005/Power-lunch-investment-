@@ -80,6 +80,10 @@ admin sees a notice on the deal card for 30 days. Dollars invested are never cha
 - If you open Edit deal, a split is applied meanwhile, and you save without touching the share box, the split-adjusted count is kept.
 - Manage > Stock splits shows the last check and has "Check for splits now". If Finnhub refuses the lookup (some plans don't include
   split data) that message is shown there instead of failing silently, and share counts stay as they are.
+- **Deals that are not public** have no ticker, so nothing checks them. On the Deals tab, the admin's **Record a split** button on such a deal
+  asks for the new-for-old ratio (2 new shares for every 1 old, or 1 for 10 for a reverse split) and the date, multiplies the share count,
+  and logs it. It needs a share (or unit) count already entered, never changes dollars invested or value, and refuses an exact repeat of a
+  split already recorded. Edit deal shows the split history.
 - Splits are only applied once Finnhub reports them, so the count can be a day or so behind the real split date.
 - Local testing: set `FINNHUB_BASE` to point at a mock Finnhub server.
 
