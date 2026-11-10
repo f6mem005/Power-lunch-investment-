@@ -4,19 +4,23 @@ Dashboard for the Power Lunch Club and members' individual investments. Static s
 Netlify Functions in `netlify/functions/`, data in Netlify Blobs. No build step. See `README.md` for the
 environment variables, the visibility rules and how values, fees and carry are calculated.
 
-## Standing rule: review every code change
+## Standing rule: code review AND security review on every code change
 
-**Every time you change code, hand the change to the code reviewer before you report it done.**
+**Every time you change code, hand the change to BOTH the code reviewer and the security reviewer before you report it done.**
+Neither one replaces the other.
 
 1. Make the change and test it (see below).
 2. Run the `code-review` skill on the change (`/code-review high`). Use the uncommitted diff, or pass paths
    such as `netlify/functions public` to review a whole area.
-3. Check each finding against the code yourself before acting; reviewers are sometimes wrong or repeat
+3. Run the `security-review` skill (`/security-review`) on the same change. Look hardest at anything touching sign-in,
+   passcodes, sessions, `netlify/functions/lib/view.mts` (who sees what), admin-only routes, the service worker and
+   anything that handles user input or stored data.
+4. Check each finding from both reviews against the code yourself before acting; reviewers are sometimes wrong or repeat
    themselves. Fix the ones that are real, and re-test.
-4. Fixes are code changes too, so they go back to the reviewer. Stop when a pass returns only repeats,
-   theoretical races or matters of taste, and say so in your report.
-5. In your report, list what was fixed and what was declined (with the reason). Never present unreviewed
-   code as done.
+5. Fixes are code changes too, so they go back to BOTH reviewers. Run the full pass again; don't just re-read your own fix.
+   Stop when a pass returns only repeats, theoretical races or matters of taste, and say so in your report.
+6. In your report, list what each reviewer found, what was fixed and what was declined (with the reason). Say plainly if either
+   review was not run. Never present unreviewed code as done.
 
 Documentation-only changes (`README.md`, this file) don't need a review.
 
