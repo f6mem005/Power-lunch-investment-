@@ -1,4 +1,4 @@
-// Stock splits are recorded by hand (Deals tab > Record a split). A split multiplies the deal's share count and is logged on the deal.
+// Stock splits are recorded by hand (Deals tab > Edit deal > Record a stock split). A split multiplies the deal's share count and is logged on the deal.
 // Dollars invested and the manual value are never touched: a split changes how many shares there are, not what was paid.
 import type { Deal, SplitEntry } from "./store.mts";
 

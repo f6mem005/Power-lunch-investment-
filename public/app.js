@@ -226,7 +226,7 @@
         const hs = state.d.holdings.filter((h) => h.dealId === d.id).sort((a, b) => b.invested - a.invested);
         const gain = dd.net + dd.dist - dd.invested;
         return `<div class="card" id="deal-${esc(d.id)}"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
-          <span>${state.role === "admin" ? `<button class="btn small" data-record-split="${esc(d.id)}">Record a split</button> <button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
+          <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : d.ticker ? "Shares held: <strong>not entered yet</strong> · " : ""}Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, dd.invested)}) net of carry</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
           ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
@@ -417,28 +417,6 @@
       try { await api(`/api/people/${id}/passcode`, { method: "DELETE" }); dlg.close(); await refresh(); } catch (err) { $("[data-err]", dlg).textContent = err.message; }
     });
   }
-  function recordSplit(id) {
-    const d = dealById(id);
-    if (!d.sharesHeld) { alert(`Enter ${d.name}'s share (or unit) count first (Edit deal), then record the split.`); return; }
-    openDialog(
-      `<h2>Record a split: ${esc(d.name)}</h2>
-      <p class="muted" style="margin-top:0">Use this when the company splits its shares. The share count changes; the dollars invested and the value you typed in do not. Currently <strong>${fmtShares(d.sharesHeld)}</strong> shares.</p>
-      ${d.ticker ? `<p class="banner">${esc(d.ticker)} is priced live, and the market price changes on the split date. Record the split then, otherwise the value shown (shares × price) is wrong until you do.</p>` : ""}
-      <div class="form-grid">
-        <div><label for="sp-to">New shares you now have…</label><input id="sp-to" name="to" type="number" min="0" step="any" value="2" required></div>
-        <div><label for="sp-from">…for every this many old shares</label><input id="sp-from" name="from" type="number" min="0" step="any" value="1" required></div>
-        <div><label for="sp-date">Date of the split</label><input id="sp-date" name="date" type="date" max="${today()}" value="${today()}" required></div>
-      </div>
-      <p id="sp-prev" class="muted"></p>`,
-      (f) => api(`/api/deals/${id}/split`, { method: "POST", body: f }),
-    );
-    const prev = () => {
-      const to = Number($("#sp-to", dlg).value), from = Number($("#sp-from", dlg).value);
-      $("#sp-prev").textContent = to > 0 && from > 0 ? `${fmtShares(d.sharesHeld)} shares become ${fmtShares(Math.round(d.sharesHeld * (to / from) * 1e6) / 1e6)}.` : "";
-    };
-    $("#sp-to", dlg).oninput = $("#sp-from", dlg).oninput = prev;
-    prev();
-  }
   function editDeal(id) {
     const d = dealById(id);
     openDialog(
@@ -457,11 +435,50 @@
       <label for="e-vn">Note for the value history (optional)</label><input id="e-vn" name="valueNote">
       <label for="e-notes">Deal notes</label><input id="e-notes" name="notes" value="${esc(d.notes || "")}">
       <p class="muted">If a ticker and share count are both set and a live price is available, the live price overrides the manual value.</p>
+      <h3 style="margin-top:16px">Record a stock split</h3>
+      ${!d.sharesHeld
+        ? `<p class="muted" style="margin-top:4px">Enter and save this deal's share (or unit) count first, then come back to record a split.</p>`
+        : `<p class="muted" style="margin-top:4px">Use this when the company splits its shares. The share count changes; the dollars invested and the value you typed in do not. Currently <strong>${fmtShares(d.sharesHeld)}</strong> shares. Recording a split saves right away; any other changes typed in this window are not saved.</p>
+      ${d.ticker ? `<p class="banner">${esc(d.ticker)} is priced live, and the market price changes on the split date. Record the split then, otherwise the value shown (shares × price) is wrong until you do.</p>` : ""}
+      <div class="form-grid">
+        <div><label for="sp-to">New shares you now have…</label><input id="sp-to" type="number" step="any" value="2"></div>
+        <div><label for="sp-from">…for every this many old shares</label><input id="sp-from" type="number" step="any" value="1"></div>
+        <div><label for="sp-date">Date of the split</label><input id="sp-date" type="date" max="${today()}" value="${today()}"></div>
+      </div>
+      <p id="sp-prev" class="muted"></p>
+      <button class="btn" type="button" id="sp-run">Record split</button>`}
       ${d.splitLog?.length ? `<details><summary>Split history (${d.splitLog.length})</summary><ul>${d.splitLog.slice().reverse().map((x) => `<li>${dateFmt(x.date)}: ${esc(String(x.to))}-for-${esc(String(x.from))}, ${fmtShares(x.before)} → ${fmtShares(x.after)} shares (recorded by you)</li>`).join("")}</ul></details>` : ""}
       ${d.valueHistory?.length ? `<details><summary>Value history (${d.valueHistory.length})</summary><ul>${d.valueHistory.slice().reverse().map((v) => `<li>${esc(new Date(v.at).toLocaleDateString())}: ${money(v.value)} (${esc(v.source)})${v.note ? ` - ${esc(v.note)}` : ""}</li>`).join("")}</ul></details>` : ""}`,
       (f) => api(`/api/deals/${id}`, { method: "PUT", body: f }),
       { label: "Delete deal", run: () => deleteDeal(id) },
     );
+    const run = $("#sp-run", dlg);
+    if (run) {
+      const prev = () => {
+        const to = Number($("#sp-to", dlg).value), from = Number($("#sp-from", dlg).value);
+        $("#sp-prev", dlg).textContent = to > 0 && from > 0 ? `${fmtShares(d.sharesHeld)} shares become ${fmtShares(Math.round(d.sharesHeld * (to / from) * 1e6) / 1e6)}.` : "";
+      };
+      $("#sp-to", dlg).oninput = $("#sp-from", dlg).oninput = prev;
+      prev();
+      const formState = () => JSON.stringify([...new FormData($("#dlgForm", dlg))]);
+      const openState = formState();
+      const record = async () => {
+        const to = Number($("#sp-to", dlg).value), from = Number($("#sp-from", dlg).value), date = $("#sp-date", dlg).value;
+        const err = $("[data-err]", dlg);
+        if (!(to > 0) || !(from > 0)) { err.textContent = "Enter the split as two numbers above zero, e.g. 2 new shares for every 1 old share."; return; }
+        if (!date || date > today()) { err.textContent = "Choose the date of the split (it can't be in the future)."; return; }
+        if (formState() !== openState && !confirm("You have unsaved changes in this window. Recording the split saves right away and discards them. Record the split anyway?")) return;
+        run.disabled = true; err.textContent = "";
+        try {
+          await api(`/api/deals/${id}/split`, { method: "POST", body: { to, from, date } });
+        } catch (e) { err.textContent = e.message; run.disabled = false; return; }
+        dlg.close();
+        try { await refresh(); } catch { setTimeout(() => refresh(false, true).catch(() => {}), 3000); }   // the split is saved; only the reload failed
+      };
+      run.onclick = record;
+      // Enter in a split box records the split; it must not save the rest of the Edit deal form.
+      for (const el of [$("#sp-to", dlg), $("#sp-from", dlg), $("#sp-date", dlg)]) el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); record(); } });
+    }
   }
   function editHolding(id) {
     const h = state.holdings.find((x) => x.id === id);
@@ -659,7 +676,6 @@
     if (t.dataset.wiz === "add") window.PLC.wizard.addInvestment();
     if (t.dataset.wiz === "complete") window.PLC.wizard.completeDetails();
     if (t.hasAttribute("data-csv-yearend")) yearEndCsv();
-    if (t.dataset.recordSplit) recordSplit(t.dataset.recordSplit);
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);
     if (t.dataset.editPerson) editPerson(t.dataset.editPerson);
     if (t.dataset.editHolding) editHolding(t.dataset.editHolding);

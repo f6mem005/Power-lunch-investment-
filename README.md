@@ -71,9 +71,9 @@ Netlify's environment variables, not in the app.
 
 ## Stock splits (recorded by hand)
 
-Nothing checks for splits automatically. When a company splits its shares, the admin opens the Deals tab and presses **Record a split**
-on that deal. It asks for the ratio (2 new shares for every 1 old one; for a reverse split, 1 new for every 10 old) and the date, shows
-the new share count, multiplies the count and logs the split. Edit deal shows the split history, and the deal card shows a notice for 30 days.
+Nothing checks for splits automatically. When a company splits its shares, the admin opens the Deals tab, presses **Edit deal** on that deal
+and uses **Record a stock split** in the window that opens. It asks for the ratio (2 new shares for every 1 old one; for a reverse split, 1 new for every 10 old) and the date, shows
+the new share count, multiplies the count and logs the split. The same window shows the split history, and the deal card shows a notice for 30 days.
 
 - The deal needs a share (or unit) count already entered.
 - Dollars invested and the value you typed in are never changed.
