@@ -425,7 +425,21 @@
         <div><label for="e-name">Name</label><input id="e-name" name="name" value="${esc(d.name)}" required></div>
         <div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Power Lunch Club</option><option value="individual"${d.channel === "individual" ? " selected" : ""}>Individual</option></select></div>
         <div><label for="e-tk">Ticker (if public)</label><input id="e-tk" name="ticker" value="${esc(d.ticker || "")}"></div>
-        <div><label for="e-sh">Shares held (whole deal)</label><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}"></div>
+        <div><label for="e-sh">Shares held (whole deal)</label><div style="display:flex;gap:8px;align-items:center"><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}" style="flex:1;min-width:0"><button class="btn small" type="button" id="sp-open" aria-expanded="false" aria-controls="sp-panel">Record split</button></div></div>
+        <div id="sp-panel" hidden style="grid-column:1/-1;margin:10px 0 4px;border:1px solid var(--grid);border-radius:10px;padding:12px">
+          <strong>Record a stock split</strong>
+          ${!d.sharesHeld
+            ? `<p class="muted" style="margin:6px 0 0">Enter and save this deal's share (or unit) count first, then come back to record a split.</p>`
+            : `<p class="muted" style="margin:6px 0 10px">Use this when the company splits its shares. The share count changes; the dollars invested and the value you typed in do not. Currently <strong>${fmtShares(d.sharesHeld)}</strong> shares. Recording a split saves right away; any other changes typed in this window are not saved.</p>
+          ${d.ticker ? `<p class="banner">${esc(d.ticker)} is priced live, and the market price changes on the split date. Record the split then, otherwise the value shown (shares × price) is wrong until you do.</p>` : ""}
+          <div class="form-grid">
+            <div><label for="sp-to">New shares you now have…</label><input id="sp-to" type="number" step="any" value="2"></div>
+            <div><label for="sp-from">…for every this many old shares</label><input id="sp-from" type="number" step="any" value="1"></div>
+            <div><label for="sp-date">Date of the split</label><input id="sp-date" type="date" max="${today()}" value="${today()}"></div>
+          </div>
+          <p id="sp-prev" class="muted"></p>
+          <button class="btn" type="button" id="sp-run">Record split</button>`}
+        </div>
         <div><label for="e-fee">Upfront mgmt fee (% of amount invested)</label><input id="e-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01" value="${d.mgmtFeePct ?? ""}"></div>
         <div><label for="e-carry">Carry (% of profit)</label><input id="e-carry" name="carryPct" type="number" min="0" max="100" step="0.01" value="${d.carryPct ?? ""}"></div>
         <div><label for="e-val">Current value ($, whole deal, before carry)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
@@ -435,23 +449,16 @@
       <label for="e-vn">Note for the value history (optional)</label><input id="e-vn" name="valueNote">
       <label for="e-notes">Deal notes</label><input id="e-notes" name="notes" value="${esc(d.notes || "")}">
       <p class="muted">If a ticker and share count are both set and a live price is available, the live price overrides the manual value.</p>
-      <h3 style="margin-top:16px">Record a stock split</h3>
-      ${!d.sharesHeld
-        ? `<p class="muted" style="margin-top:4px">Enter and save this deal's share (or unit) count first, then come back to record a split.</p>`
-        : `<p class="muted" style="margin-top:4px">Use this when the company splits its shares. The share count changes; the dollars invested and the value you typed in do not. Currently <strong>${fmtShares(d.sharesHeld)}</strong> shares. Recording a split saves right away; any other changes typed in this window are not saved.</p>
-      ${d.ticker ? `<p class="banner">${esc(d.ticker)} is priced live, and the market price changes on the split date. Record the split then, otherwise the value shown (shares × price) is wrong until you do.</p>` : ""}
-      <div class="form-grid">
-        <div><label for="sp-to">New shares you now have…</label><input id="sp-to" type="number" step="any" value="2"></div>
-        <div><label for="sp-from">…for every this many old shares</label><input id="sp-from" type="number" step="any" value="1"></div>
-        <div><label for="sp-date">Date of the split</label><input id="sp-date" type="date" max="${today()}" value="${today()}"></div>
-      </div>
-      <p id="sp-prev" class="muted"></p>
-      <button class="btn" type="button" id="sp-run">Record split</button>`}
       ${d.splitLog?.length ? `<details><summary>Split history (${d.splitLog.length})</summary><ul>${d.splitLog.slice().reverse().map((x) => `<li>${dateFmt(x.date)}: ${esc(String(x.to))}-for-${esc(String(x.from))}, ${fmtShares(x.before)} → ${fmtShares(x.after)} shares (recorded by you)</li>`).join("")}</ul></details>` : ""}
       ${d.valueHistory?.length ? `<details><summary>Value history (${d.valueHistory.length})</summary><ul>${d.valueHistory.slice().reverse().map((v) => `<li>${esc(new Date(v.at).toLocaleDateString())}: ${money(v.value)} (${esc(v.source)})${v.note ? ` - ${esc(v.note)}` : ""}</li>`).join("")}</ul></details>` : ""}`,
       (f) => api(`/api/deals/${id}`, { method: "PUT", body: f }),
       { label: "Delete deal", run: () => deleteDeal(id) },
     );
+    $("#sp-open", dlg).onclick = (e) => {
+      const panel = $("#sp-panel", dlg), show = panel.hidden;
+      panel.hidden = !show;
+      e.currentTarget.setAttribute("aria-expanded", String(show));
+    };
     const run = $("#sp-run", dlg);
     if (run) {
       const prev = () => {
