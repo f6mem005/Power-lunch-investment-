@@ -9,11 +9,13 @@ export const STALE_MS = 24 * 60 * 60 * 1000;
 export const withStaleFlag = (q: Quote, now = Date.now()): Quote => ({ ...q, stale: now - (q.fetchedAt ?? 0) > STALE_MS });
 export const validSymbol = (s: string) => /^[A-Z0-9.\-]{1,10}$/.test(s);
 
+export const finnhubBase = () => Netlify.env.get("FINNHUB_BASE") || "https://finnhub.io/api/v1";
+
 async function fetchQuote(symbol: string): Promise<Quote> {
   const key = Netlify.env.get("FINNHUB_API_KEY");
   try {
     if (key) {
-      const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${key}`, { signal: AbortSignal.timeout(6000) });
+      const r = await fetch(`${finnhubBase()}/quote?symbol=${encodeURIComponent(symbol)}&token=${key}`, { signal: AbortSignal.timeout(6000) });
       if (!r.ok) throw new Error(`Finnhub HTTP ${r.status}`);
       const q = (await r.json()) as { c?: number; t?: number };
       if (!q.c) throw new Error("No price returned");

@@ -1,8 +1,11 @@
 import type { Config } from "@netlify/functions";
 import { clearCookie, hashPasscode, readSession } from "./lib/auth.mts";
 import type { Session } from "./lib/auth.mts";
+import { todayStr as today } from "./lib/dates.mts";
 import { cachedQuotes, getQuotes, validSymbol } from "./lib/prices.mts";
-import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne } from "./lib/store.mts";
+import { checkSplits } from "./lib/splits.mts";
+import type { SplitStatus } from "./lib/splits.mts";
+import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne, store } from "./lib/store.mts";
 import type { AuthRecord, Deal, Holding, Person } from "./lib/store.mts";
 import { buildView } from "./lib/view.mts";
 import type { Viewer } from "./lib/view.mts";
@@ -59,24 +62,30 @@ const ticker = (v: unknown) => {
   return s;
 };
 
-// "Today" in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
-const TZ = Netlify.env.get("APP_TIMEZONE") || "America/New_York";
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 // Deal names must be unique (case-insensitive). `exceptId` lets a deal keep its own name.
 async function assertUniqueDealName(name: string, exceptId?: string, existing?: Deal[], hint = "") {
   if ((existing ?? (await listAll<Deal>(KINDS.deal))).some((x) => x.id !== exceptId && sameName(x.name, name))) bad(`A deal with that name already exists${hint}`);
 }
-const today = () => new Date().toLocaleDateString("en-CA", { timeZone: TZ });
+// `today()` is the date in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
+// The date a share count is valid from: never in the future (a future date would hide real splits).
+const sharesDate = (v: unknown) => {
+  const s = dateStr(v, "Share count as-of date");
+  if (s > today()) bad("Share count as-of date can't be in the future");
+  return s;
+};
 
 function buildDeal(body: any): Deal {
   const name = str(body.name, "Deal name");
   const hasValue = !(body.manualValue === "" || body.manualValue == null);
+  const sharesHeld = optQty(body.sharesHeld, "Shares held");
   return {
     id: newId(name),
     name,
     channel: body.channel === "individual" ? "individual" : "club",
     ticker: ticker(body.ticker),
-    sharesHeld: optQty(body.sharesHeld, "Shares held"),
+    sharesHeld,
+    sharesAsOf: sharesHeld === null ? null : body.sharesAsOf ? sharesDate(body.sharesAsOf) : today(),
     manualValue: optMoney(body.manualValue, "Current value"),
     valueSource: !hasValue ? "estimate" : body.valueSource === "statement" ? "statement" : "estimate", // a typed-in value is an estimate unless it is explicitly marked as from a statement
     valueAsOf: !hasValue ? null : body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today(),
@@ -130,6 +139,7 @@ export default async (req: Request) => {
       const view = await loadView(await viewerFor());
       const extra: Record<string, unknown> = {};
       if (isAdmin && !url.searchParams.get("as")) {
+        extra.splitStatus = (await store().get("meta/splits-status", { type: "json" }).catch(() => null)) as SplitStatus | null;
         const auth = await listAll<AuthRecord>("auth");
         extra.passcodes = Object.fromEntries(auth.map((a) => [a.id, a.updatedAt]));
       }
@@ -151,6 +161,7 @@ export default async (req: Request) => {
         headers: { "content-type": "application/json", "cache-control": "no-store", "content-disposition": `attachment; filename="pari-passu-backup-${stamp}.json"` },
       });
     }
+    if (resource === "splits" && id === "check" && method === "POST") return json(await checkSplits());
     if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON", 415);
     let body: any = {};
     if (method === "POST" || method === "PUT") {
@@ -221,7 +232,20 @@ export default async (req: Request) => {
         d.name = newName;
         d.channel = body.channel === "individual" ? "individual" : "club";
         d.ticker = ticker(body.ticker);
-        d.sharesHeld = optQty(body.sharesHeld, "Shares held");
+        // The form remembers the share count it was opened with. If a split was applied since, and the admin did not touch the
+        // box, keep the split-adjusted count instead of silently putting the old one back.
+        const typedShares = optQty(body.sharesHeld, "Shares held");
+        const was = body.sharesHeldWas === undefined ? undefined : optQty(body.sharesHeldWas, "Shares held");
+        const untouched = was !== undefined && typedShares === was;
+        const nextShares = untouched ? d.sharesHeld ?? null : typedShares;
+        if (nextShares === null) {
+          d.sharesAsOf = null;
+        } else if (body.sharesAsOf && body.sharesAsOf !== d.sharesAsOf) {
+          d.sharesAsOf = sharesDate(body.sharesAsOf); // an explicit as-of date from the admin
+        } else if (nextShares !== (d.sharesHeld ?? null) || !d.sharesAsOf) {
+          d.sharesAsOf = today(); // a new count is valid from today
+        }
+        d.sharesHeld = nextShares;
         d.mgmtFeePct = optPct(body.mgmtFeePct, "Management fee");
         d.carryPct = optPct(body.carryPct, "Carry");
         d.notes = optStr(body.notes);
