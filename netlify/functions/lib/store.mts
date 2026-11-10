@@ -3,7 +3,7 @@ import seed from "./seed.json" with { type: "json" };
 
 export type Person = { id: string; name: string; type: "member" | "non-member"; order: number };
 export type ValueEntry = { at: string; value: number | null; source: string; note: string };
-// One automatic (or recorded) stock split applied to a deal's share count.
+// One recorded stock split applied to a deal's share count.
 export type SplitEntry = { date: string; from: number; to: number; before: number; after: number; appliedAt: string; source: string };
 export type Deal = {
   id: string;
@@ -11,7 +11,6 @@ export type Deal = {
   channel: "club" | "individual";
   ticker: string | null;
   sharesHeld: number | null;
-  sharesAsOf?: string | null; // the date the share count is valid from; splits dated after it are applied automatically
   splitLog?: SplitEntry[];
   manualValue: number | null;
   valueSource: "placeholder" | "statement" | "estimate";

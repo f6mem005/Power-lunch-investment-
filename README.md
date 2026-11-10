@@ -13,7 +13,7 @@ No build step.
 |---|---|---|
 | `SESSION_SECRET` | yes | Random string (16+ chars) that signs login cookies |
 | `ADMIN_PASSCODE` | yes | The admin's passcode (sign in with the name left blank) |
-| `FINNHUB_API_KEY` | recommended | Live prices via Finnhub. Without it the app falls back to Stooq's free quotes, which returned HTTP 404 for SPCX, so set this for any public deal. Also needed for automatic stock-split checks |
+| `FINNHUB_API_KEY` | recommended | Live prices via Finnhub. Without it the app falls back to Stooq's free quotes, which returned HTTP 404 for SPCX, so set this for any public deal |
 
 Mark the secrets as secret and scope them to **Functions**. If either required value is missing, nobody can
 sign in (fails closed). There is no shared viewer passcode: everyone else signs in with their own name and a
@@ -69,23 +69,16 @@ values). People can only be deleted once they have no holdings; deleting a deal 
 holdings. Manage > Backup downloads everything as JSON, since there is no undo. Passcodes are changed in
 Netlify's environment variables, not in the app.
 
-## Stock splits (automatic)
+## Stock splits (recorded by hand)
 
-A public deal's share count is valid **as of** a date (shown as "Share count as of" in Edit deal). Every day at 13:00 UTC (a scheduled
-function, `split-check`) the app asks Finnhub for splits of each ticker and applies any split dated **after** that date: the share
-count is multiplied by the ratio (a 2-for-1 doubles it, a 2-for-7 reverse split shrinks it), the change is logged on the deal, and the
-admin sees a notice on the deal card for 30 days. Dollars invested are never changed.
+Nothing checks for splits automatically. When a company splits its shares, the admin opens the Deals tab and presses **Record a split**
+on that deal. It asks for the ratio (2 new shares for every 1 old one; for a reverse split, 1 new for every 10 old) and the date, shows
+the new share count, multiplies the count and logs the split. Edit deal shows the split history, and the deal card shows a notice for 30 days.
 
-- Typing a new share count stamps it as valid from today (or from the "as of" date you choose), so a split before that date is never applied twice.
-- If you open Edit deal, a split is applied meanwhile, and you save without touching the share box, the split-adjusted count is kept.
-- Manage > Stock splits shows the last check and has "Check for splits now". If Finnhub refuses the lookup (some plans don't include
-  split data) that message is shown there instead of failing silently, and share counts stay as they are.
-- **Deals that are not public** have no ticker, so nothing checks them. On the Deals tab, the admin's **Record a split** button on such a deal
-  asks for the new-for-old ratio (2 new shares for every 1 old, or 1 for 10 for a reverse split) and the date, multiplies the share count,
-  and logs it. It needs a share (or unit) count already entered, never changes dollars invested or value, and refuses an exact repeat of a
-  split already recorded. Edit deal shows the split history.
-- Splits are only applied once Finnhub reports them, so the count can be a day or so behind the real split date.
-- Local testing: set `FINNHUB_BASE` to point at a mock Finnhub server.
+- The deal needs a share (or unit) count already entered.
+- Dollars invested and the value you typed in are never changed.
+- For a public deal the live price changes on the split date, so record the split then; until you do, shares x price is wrong.
+- An exact repeat of a split already recorded is refused, so a double tap can't apply it twice.
 
 ## Year-end totals
 

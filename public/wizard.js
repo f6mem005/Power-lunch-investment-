@@ -328,7 +328,7 @@
             await P.api(`/api/deals/${d.id}`, {
               method: "PUT",
               body: {
-                name: cur.name, channel: cur.channel, notes: cur.notes, ticker: f.ticker, sharesHeld: f.shares, sharesHeldWas: d.sharesHeld ?? "",
+                name: cur.name, channel: cur.channel, notes: cur.notes, ticker: f.ticker, sharesHeld: f.shares,
                 mgmtFeePct: f.fee, carryPct: f.carry, manualValue: f.value, valueSource: f.source,
                 valueAsOf: changed ? f.asOf : cur.valueAsOf || "", valueNote: "Guided setup",
               },

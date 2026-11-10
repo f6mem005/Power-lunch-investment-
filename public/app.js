@@ -46,7 +46,7 @@
 
   const state = {
     scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
-    role: null, me: null, previewOf: null, passcodes: {}, splitStatus: null, priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
+    role: null, me: null, previewOf: null, passcodes: {}, priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
   };
 
   async function api(path, opts = {}) {
@@ -226,7 +226,7 @@
         const hs = state.d.holdings.filter((h) => h.dealId === d.id).sort((a, b) => b.invested - a.invested);
         const gain = dd.net + dd.dist - dd.invested;
         return `<div class="card" id="deal-${esc(d.id)}"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
-          <span>${state.role === "admin" ? `${!d.ticker ? `<button class="btn small" data-record-split="${esc(d.id)}">Record a split</button> ` : ""}<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
+          <span>${state.role === "admin" ? `<button class="btn small" data-record-split="${esc(d.id)}">Record a split</button> <button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : d.ticker ? "Shares held: <strong>not entered yet</strong> · " : ""}Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, dd.invested)}) net of carry</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
           ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
@@ -305,20 +305,12 @@
   // The user's own calendar date (not UTC, which is already "tomorrow" in the evening).
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-  // Splits applied automatically in the last 30 days, shown to the admin so a changed share count is never a surprise.
+  // Splits recorded in the last 30 days, shown to the admin on the deal card.
   function splitNotice(d) {
     const cutoff = new Date(Date.now() - 30 * 864e5).toISOString();
     const recent = (d.splitLog || []).filter((x) => x.appliedAt >= cutoff);
     if (!recent.length) return "";
-    return recent.map((x) => `<p class="banner">Stock split ${esc(String(x.to))}-for-${esc(String(x.from))} on ${dateFmt(x.date)} ${x.source === "Finnhub" ? "was applied automatically" : "was recorded"}: ${fmtShares(x.before)} → ${fmtShares(x.after)} shares. Dollars invested are unchanged.</p>`).join("");
-  }
-  function splitCard() {
-    const st = state.splitStatus;
-    const tracked = state.deals.filter((d) => d.ticker && d.sharesHeld).length;
-    return `<div class="card"><h2>Stock splits</h2>
-      <p class="muted" style="margin-top:0">Share counts for public deals are adjusted automatically when a stock splits (checked every day). Dollars invested never change. ${tracked} deal${tracked === 1 ? "" : "s"} watched.</p>
-      <p style="margin:0 0 10px" id="splitMsg">${st ? `<span class="${st.ok ? "pos" : "neg"}">${esc(st.message)}</span> <span class="muted">Last checked ${esc(new Date(st.checkedAt).toLocaleString())}.</span>` : '<span class="muted">Not checked yet.</span>'}</p>
-      <div class="row-actions" style="margin-top:0"><button class="btn" type="button" data-split-check>Check for splits now</button></div></div>`;
+    return recent.map((x) => `<p class="banner">Stock split ${esc(String(x.to))}-for-${esc(String(x.from))} on ${dateFmt(x.date)} was recorded: ${fmtShares(x.before)} → ${fmtShares(x.after)} shares. Dollars invested are unchanged.</p>`).join("");
   }
   function admin() {
     const rows = state.d.holdings
@@ -328,7 +320,6 @@
         <td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button> <button class="btn small danger" data-del-holding="${esc(h.id)}">Delete</button></td></tr>`)
       .join("");
     return `<div class="stack">
-      ${splitCard()}
       <div class="card"><h2>Backup</h2><p class="muted" style="margin-top:0">Everything here can be edited or deleted with no undo. Download a copy before big changes.</p><a class="btn" href="/api/export" download>Download backup (JSON)</a></div>
       <div class="card"><h2>Guided setup</h2><p class="muted" style="margin-top:0">Answer a few questions instead of filling in forms.</p>
         <div class="row-actions" style="margin-top:0"><button class="btn primary" type="button" data-wiz="add">Add an investment</button><button class="btn" type="button" data-wiz="complete">Fill in missing deal details</button></div></div>
@@ -431,7 +422,8 @@
     if (!d.sharesHeld) { alert(`Enter ${d.name}'s share (or unit) count first (Edit deal), then record the split.`); return; }
     openDialog(
       `<h2>Record a split: ${esc(d.name)}</h2>
-      <p class="muted" style="margin-top:0">Use this when the company splits its shares. The share count changes; the dollars invested and the value do not. Currently <strong>${fmtShares(d.sharesHeld)}</strong> shares.</p>
+      <p class="muted" style="margin-top:0">Use this when the company splits its shares. The share count changes; the dollars invested and the value you typed in do not. Currently <strong>${fmtShares(d.sharesHeld)}</strong> shares.</p>
+      ${d.ticker ? `<p class="banner">${esc(d.ticker)} is priced live, and the market price changes on the split date. Record the split then, otherwise the value shown (shares × price) is wrong until you do.</p>` : ""}
       <div class="form-grid">
         <div><label for="sp-to">New shares you now have…</label><input id="sp-to" name="to" type="number" min="0" step="any" value="2" required></div>
         <div><label for="sp-from">…for every this many old shares</label><input id="sp-from" name="from" type="number" min="0" step="any" value="1" required></div>
@@ -455,8 +447,7 @@
         <div><label for="e-name">Name</label><input id="e-name" name="name" value="${esc(d.name)}" required></div>
         <div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Power Lunch Club</option><option value="individual"${d.channel === "individual" ? " selected" : ""}>Individual</option></select></div>
         <div><label for="e-tk">Ticker (if public)</label><input id="e-tk" name="ticker" value="${esc(d.ticker || "")}"></div>
-        <div><label for="e-sh">Shares held (whole deal)</label><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}"><input type="hidden" name="sharesHeldWas" value="${d.sharesHeld ?? ""}"></div>
-        <div><label for="e-shd">Share count as of</label><input id="e-shd" name="sharesAsOf" type="date" max="${today()}" value="${d.sharesAsOf || ""}"></div>
+        <div><label for="e-sh">Shares held (whole deal)</label><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}"></div>
         <div><label for="e-fee">Upfront mgmt fee (% of amount invested)</label><input id="e-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01" value="${d.mgmtFeePct ?? ""}"></div>
         <div><label for="e-carry">Carry (% of profit)</label><input id="e-carry" name="carryPct" type="number" min="0" max="100" step="0.01" value="${d.carryPct ?? ""}"></div>
         <div><label for="e-val">Current value ($, whole deal, before carry)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
@@ -465,9 +456,8 @@
       </div>
       <label for="e-vn">Note for the value history (optional)</label><input id="e-vn" name="valueNote">
       <label for="e-notes">Deal notes</label><input id="e-notes" name="notes" value="${esc(d.notes || "")}">
-      <p class="muted">Splits dated after the "share count as of" date are applied to the share count automatically. If you type a new count, set the date it is valid from.</p>
       <p class="muted">If a ticker and share count are both set and a live price is available, the live price overrides the manual value.</p>
-      ${d.splitLog?.length ? `<details><summary>Split history (${d.splitLog.length})</summary><ul>${d.splitLog.slice().reverse().map((x) => `<li>${dateFmt(x.date)}: ${esc(String(x.to))}-for-${esc(String(x.from))}, ${fmtShares(x.before)} → ${fmtShares(x.after)} shares (${x.source === "Finnhub" ? "automatic" : "recorded by you"})</li>`).join("")}</ul></details>` : ""}
+      ${d.splitLog?.length ? `<details><summary>Split history (${d.splitLog.length})</summary><ul>${d.splitLog.slice().reverse().map((x) => `<li>${dateFmt(x.date)}: ${esc(String(x.to))}-for-${esc(String(x.from))}, ${fmtShares(x.before)} → ${fmtShares(x.after)} shares (recorded by you)</li>`).join("")}</ul></details>` : ""}
       ${d.valueHistory?.length ? `<details><summary>Value history (${d.valueHistory.length})</summary><ul>${d.valueHistory.slice().reverse().map((v) => `<li>${esc(new Date(v.at).toLocaleDateString())}: ${money(v.value)} (${esc(v.source)})${v.note ? ` - ${esc(v.note)}` : ""}</li>`).join("")}</ul></details>` : ""}`,
       (f) => api(`/api/deals/${id}`, { method: "PUT", body: f }),
       { label: "Delete deal", run: () => deleteDeal(id) },
@@ -567,7 +557,7 @@
   async function refresh(afterPrices = false, soft = false) {
     const data = await api(`/api/data${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`);
     Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, quotes: data.quotes || {} });
-    if (data.role === "admin") Object.assign(state, { adminPeople: data.people, passcodes: data.passcodes || {}, splitStatus: data.splitStatus ?? state.splitStatus });
+    if (data.role === "admin") Object.assign(state, { adminPeople: data.people, passcodes: data.passcodes || {} });
     if (!state.scope || !allowedScopes()[state.scope]) state.scope = Object.keys(allowedScopes())[0];
     derive();
     if (soft) softRender(); else render();
@@ -669,12 +659,6 @@
     if (t.dataset.wiz === "add") window.PLC.wizard.addInvestment();
     if (t.dataset.wiz === "complete") window.PLC.wizard.completeDetails();
     if (t.hasAttribute("data-csv-yearend")) yearEndCsv();
-    if (t.hasAttribute("data-split-check")) {
-      t.disabled = true;
-      try { state.splitStatus = await api("/api/splits/check", { method: "POST", body: {} }); await refresh(false, true); }
-      catch (err) { alert(err.message); }
-      finally { t.disabled = false; }
-    }
     if (t.dataset.recordSplit) recordSplit(t.dataset.recordSplit);
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);
     if (t.dataset.editPerson) editPerson(t.dataset.editPerson);

@@ -3,9 +3,8 @@ import { clearCookie, hashPasscode, readSession } from "./lib/auth.mts";
 import type { Session } from "./lib/auth.mts";
 import { todayStr as today } from "./lib/dates.mts";
 import { cachedQuotes, getQuotes, validSymbol } from "./lib/prices.mts";
-import { applySplit, checkSplits, ratioOk, splitKey } from "./lib/splits.mts";
-import type { SplitStatus } from "./lib/splits.mts";
-import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne, store } from "./lib/store.mts";
+import { applySplit, ratioOk, splitKey } from "./lib/splits.mts";
+import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne } from "./lib/store.mts";
 import type { AuthRecord, Deal, Holding, Person } from "./lib/store.mts";
 import { buildView } from "./lib/view.mts";
 import type { Viewer } from "./lib/view.mts";
@@ -68,13 +67,12 @@ async function assertUniqueDealName(name: string, exceptId?: string, existing?: 
   if ((existing ?? (await listAll<Deal>(KINDS.deal))).some((x) => x.id !== exceptId && sameName(x.name, name))) bad(`A deal with that name already exists${hint}`);
 }
 // `today()` is the date in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
-// The date a share count is valid from: never in the future (a future date would hide real splits).
+// pastDate: a real calendar day that is not in the future.
 const pastDate = (v: unknown, name: string) => {
   const s = dateStr(v, name);
   if (s > today()) bad(`${name} can't be in the future`);
   return s;
 };
-const sharesDate = (v: unknown) => pastDate(v, "Share count as-of date");
 const posNum = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 && n <= 1e6 ? n : NaN;
@@ -83,14 +81,12 @@ const posNum = (v: unknown) => {
 function buildDeal(body: any): Deal {
   const name = str(body.name, "Deal name");
   const hasValue = !(body.manualValue === "" || body.manualValue == null);
-  const sharesHeld = optQty(body.sharesHeld, "Shares held");
   return {
     id: newId(name),
     name,
     channel: body.channel === "individual" ? "individual" : "club",
     ticker: ticker(body.ticker),
-    sharesHeld,
-    sharesAsOf: sharesHeld === null ? null : body.sharesAsOf ? sharesDate(body.sharesAsOf) : today(),
+    sharesHeld: optQty(body.sharesHeld, "Shares held"),
     manualValue: optMoney(body.manualValue, "Current value"),
     valueSource: !hasValue ? "estimate" : body.valueSource === "statement" ? "statement" : "estimate", // a typed-in value is an estimate unless it is explicitly marked as from a statement
     valueAsOf: !hasValue ? null : body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today(),
@@ -144,7 +140,6 @@ export default async (req: Request) => {
       const view = await loadView(await viewerFor());
       const extra: Record<string, unknown> = {};
       if (isAdmin && !url.searchParams.get("as")) {
-        extra.splitStatus = (await store().get("meta/splits-status", { type: "json" }).catch(() => null)) as SplitStatus | null;
         const auth = await listAll<AuthRecord>("auth");
         extra.passcodes = Object.fromEntries(auth.map((a) => [a.id, a.updatedAt]));
       }
@@ -166,7 +161,6 @@ export default async (req: Request) => {
         headers: { "content-type": "application/json", "cache-control": "no-store", "content-disposition": `attachment; filename="pari-passu-backup-${stamp}.json"` },
       });
     }
-    if (resource === "splits" && id === "check" && method === "POST") return json(await checkSplits());
     if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON", 415);
     let body: any = {};
     if (method === "POST" || method === "PUT") {
@@ -223,18 +217,16 @@ export default async (req: Request) => {
     }
 
     if (resource === "deals") {
-      // Record a stock split by hand (for deals that are not public, so there is no automatic check).
+      // Record a stock split by hand: multiplies the share count and logs it. Dollars invested and the value are not touched.
       if (id && parts[2] === "split" && method === "POST") {
         const d = await getOne<Deal>(KINDS.deal, id);
         if (!d) return fail("Not found", 404);
-        if (d.ticker) bad("This deal has a ticker, so its splits are applied automatically");
         if (!d.sharesHeld) bad("Enter this deal's share (or unit) count first, then record the split");
         const split = { date: pastDate(body.date, "Split date"), from: posNum(body.from), to: posNum(body.to) };
         if (Number.isNaN(split.from) || Number.isNaN(split.to)) bad("Enter the split as two positive numbers, e.g. 2 new shares for every 1 old share");
         if (!ratioOk(split)) bad("That split ratio doesn't look right (it must change the share count, and by no more than 1000 times)");
         if ((d.splitLog ?? []).some((x) => splitKey(x) === splitKey(split))) bad("That split has already been recorded for this deal");
         if (!applySplit(d, split, "Recorded by admin")) bad("That split would leave no shares");
-        d.sharesAsOf = today(); // the count is now current, so it is valid from today
         await putOne(KINDS.deal, d);
         return json(d);
       }
@@ -252,20 +244,7 @@ export default async (req: Request) => {
         d.name = newName;
         d.channel = body.channel === "individual" ? "individual" : "club";
         d.ticker = ticker(body.ticker);
-        // The form remembers the share count it was opened with. If a split was applied since, and the admin did not touch the
-        // box, keep the split-adjusted count instead of silently putting the old one back.
-        const typedShares = optQty(body.sharesHeld, "Shares held");
-        const was = body.sharesHeldWas === undefined ? undefined : optQty(body.sharesHeldWas, "Shares held");
-        const untouched = was !== undefined && typedShares === was;
-        const nextShares = untouched ? d.sharesHeld ?? null : typedShares;
-        if (nextShares === null) {
-          d.sharesAsOf = null;
-        } else if (body.sharesAsOf && body.sharesAsOf !== d.sharesAsOf) {
-          d.sharesAsOf = sharesDate(body.sharesAsOf); // an explicit as-of date from the admin
-        } else if (nextShares !== (d.sharesHeld ?? null) || !d.sharesAsOf) {
-          d.sharesAsOf = today(); // a new count is valid from today
-        }
-        d.sharesHeld = nextShares;
+        d.sharesHeld = optQty(body.sharesHeld, "Shares held");
         d.mgmtFeePct = optPct(body.mgmtFeePct, "Management fee");
         d.carryPct = optPct(body.carryPct, "Carry");
         d.notes = optStr(body.notes);
