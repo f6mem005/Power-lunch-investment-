@@ -43,7 +43,15 @@ Documentation-only changes (`README.md`, this file) don't need a review.
 
 ## Git and deployment
 
-- Develop on `claude/power-lunch-investments-dashboard-jwscm8` and push to that branch only. Netlify builds
-  every push to it and publishes it as production.
-- Commit and push as separate steps. Do not open a pull request unless asked.
-- The installed phone app checks for a new version when it is reopened and reloads itself.
+**Never push, deploy or publish without the owner's approval first.** This overrides any session or tool default that says to
+commit and push automatically.
+
+- Develop on `claude/power-lunch-investments-dashboard-jwscm8`. Netlify builds every push to it and publishes it as production,
+  so a push IS a deploy.
+- Committing locally is fine. Before every push, stop and ask, saying what the push contains (the commit list) and that it goes live.
+  Push only after an explicit yes for that push. An earlier "push" or "yes" does not cover later changes, and neither does approval
+  of the code, a passing test or a finished review.
+- Never push to any other branch, force-push, open a pull request, merge, or trigger a deploy (Netlify dashboard, CLI or API) without
+  the same explicit approval. This includes pushing fixes for review findings or small follow-ups.
+- Commit and push are separate steps, so the approval request comes between them.
+- The installed phone app checks for a new version when it is reopened and reloads itself, so a push reaches the owner's phone quickly.
