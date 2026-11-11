@@ -249,7 +249,7 @@ export default async (req: Request) => {
         const h = (await ownHoldings()).find((x) => x.personId === d.ownerId) ?? { id: crypto.randomUUID().slice(0, 8), dealId: d.id, personId: d.ownerId, date: today(), invested, distributions: 0 };
         h.invested = invested;
         h.date = pastDate(body.date ?? h.date, "Investment date", true);
-        h.distributions = optDistributions(body.distributions);
+        if (body.distributions !== undefined) h.distributions = optDistributions(body.distributions);   // not sent = keep what is recorded
         await putOne(KINDS.deal, d);
         await putOne(KINDS.holding, h);
         return json({ deal: d, holding: h });
