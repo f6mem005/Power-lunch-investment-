@@ -19,11 +19,11 @@
   const lockPage = () => {
     if (lockedAt !== null) return;
     lockedAt = window.scrollY;
-    Object.assign(document.body.style, { position: "fixed", top: `-${lockedAt}px`, left: "0", right: "0", width: "100%", touchAction: "pan-y pinch-zoom" });
+    Object.assign(document.body.style, { position: "fixed", top: `-${lockedAt}px`, left: "0", right: "0", width: "100%" });
   };
   const unlockPage = () => {
     if (lockedAt === null) return;
-    Object.assign(document.body.style, { position: "", top: "", left: "", right: "", width: "", touchAction: "" });
+    Object.assign(document.body.style, { position: "", top: "", left: "", right: "", width: "" });
     window.scrollTo(0, lockedAt);
     lockedAt = null;
     markTop();
