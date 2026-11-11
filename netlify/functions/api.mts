@@ -70,10 +70,11 @@ async function assertUniqueDealName(name: string, exceptId?: string, existing?: 
   if (group.some((x) => x.id !== exceptId && sameName(x.name, name))) bad(`A deal with that name already exists${hint}`);
 }
 // `today()` is the date in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
-// pastDate: a real calendar day that is not in the future.
+// pastDate: a real calendar day that is not in the future. It allows one day of slack, so someone whose own calendar date is
+// already ahead of the club's time zone isn't refused for "today".
 const pastDate = (v: unknown, name: string) => {
   const s = dateStr(v, name);
-  if (s > today()) bad(`${name} can't be in the future`);
+  if (s > today(new Date(Date.now() + 864e5))) bad(`${name} can't be in the future`);
   return s;
 };
 const posNum = (v: unknown) => {
@@ -131,7 +132,7 @@ function recordSplit(d: Deal, body: any, source: string) {
 }
 
 const MAX_OWN_DEALS = 25; // per person, so nobody can fill the store or flood the price provider with tickers
-const OWN_DEAL_HINT = "This is a member's own deal. Open it under Members' deals to change it.";
+const OWN_DEAL_HINT = "This is a member's own deal. Change it under Manage > Members' own deals.";
 
 export default async (req: Request) => {
   const url = new URL(req.url);

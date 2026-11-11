@@ -444,7 +444,8 @@
   }
   function editPerson(id) {
     const p = personById(id);
-    const n = state.holdings.filter((h) => h.personId === id).length;
+    const nOwn = state.ownHoldings.filter((h) => h.personId === id).length;   // in their own private deals (kept out of state.holdings)
+    const n = state.holdings.filter((h) => h.personId === id).length + nOwn;
     openDialog(
       `<h2>${esc(p.name)}</h2>
       <label for="p-name">Name</label><input id="p-name" name="name" value="${esc(p.name)}" required>
@@ -452,7 +453,7 @@
       <label for="p-code">Sign-in passcode</label>
       <div class="inv-row" style="grid-template-columns:1fr auto auto"><input id="p-code" name="passcode" autocomplete="off" spellcheck="false" placeholder="${state.passcodes[id] ? "Set. Type a new one to replace it" : "Not set. This person can't sign in yet"}"><button type="button" class="btn small" data-gen>Generate</button>${state.passcodes[id] ? '<button type="button" class="btn small danger" data-rmcode>Remove</button>' : ""}</div>
       <p class="muted">At least 8 characters. Generate makes an easy-to-say 8-character code (like rakobu47). It's stored scrambled and can't be shown again, so copy it before saving and send it to ${esc(p.name)} privately. Changing or removing it signs them out. They sign in with their name (${esc(p.name)}) and this passcode.</p>
-      <p class="muted">${n ? `${n} holding${n === 1 ? "" : "s"}. To delete this person, delete or reassign their holdings first.` : "No holdings, so this person can be deleted."}</p>`,
+      <p class="muted">${n ? `${n} holding${n === 1 ? "" : "s"}${nOwn ? ` (${nOwn} in their own private deals, under Manage > Members' own deals)` : ""}. To delete this person, delete or reassign their holdings first.` : "No holdings, so this person can be deleted."}</p>`,
       async (f) => {
         await api(`/api/people/${id}`, { method: "PUT", body: { name: f.name, type: f.type } });
         if (f.passcode) await api(`/api/people/${id}/passcode`, { method: "PUT", body: { passcode: f.passcode } });
