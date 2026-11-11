@@ -698,12 +698,21 @@
     }
   });
   $("#logoutBtn").onclick = async () => { await api("/api/logout", { method: "POST", body: {} }).catch(() => {}); Object.assign(state, { role: null, me: null, previewOf: null }); showLogin(); };
+  // One toggle that says what it will do: "Dark mode" while the page is regular, "Regular mode" while it is dark.
+  const isDark = () => document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  const paintTheme = () => {
+    const dark = isDark(), btn = $("#themeBtn");
+    btn.textContent = dark ? "☀ Regular mode" : "☾ Dark mode";
+    btn.setAttribute("aria-label", dark ? "Switch to regular (light) mode" : "Switch to dark mode");
+  };
   $("#themeBtn").onclick = () => {
-    const dark = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
-    document.documentElement.dataset.theme = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = isDark() ? "light" : "dark";
     try { localStorage.setItem("plc-theme", document.documentElement.dataset.theme); } catch {}
+    paintTheme();
   };
   try { const t = localStorage.getItem("plc-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+  paintTheme();
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", paintTheme);   // follows the phone's setting until you choose
   addEventListener("hashchange", () => state.d && render());
 
   async function submitForm(form, fn) {
