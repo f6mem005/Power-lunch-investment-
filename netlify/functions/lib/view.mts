@@ -79,8 +79,8 @@ export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], al
     .filter((d) => d.ownerId && (isAdmin || d.ownerId === me?.id))
     .map((d) => ({ ...d, ...baseOf(d, true), valueAsOf: d.valueAsOf }));
   const ownIds = new Set(ownDeals.map((d) => d.id));
-  const ownDealById = new Map(allDeals.map((d) => [d.id, d]));
-  const ownHoldings = allHoldings.filter((h) => ownIds.has(h.dealId)).map((h) => rowOf(h, ownDealById.get(h.dealId)!, true));
+  const allDealById = new Map(allDeals.map((d) => [d.id, d]));
+  const ownHoldings = allHoldings.filter((h) => ownIds.has(h.dealId)).map((h) => rowOf(h, allDealById.get(h.dealId)!, true));
 
   const peopleIds = new Set(rows.map((r) => r.personId));
   if (me) {

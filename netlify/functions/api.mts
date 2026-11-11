@@ -70,13 +70,15 @@ async function assertUniqueDealName(name: string, exceptId?: string, existing?: 
   if (group.some((x) => x.id !== exceptId && sameName(x.name, name))) bad(`A deal with that name already exists${hint}`);
 }
 // `today()` is the date in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
-// pastDate: a real calendar day that is not in the future. It allows one day of slack, so someone whose own calendar date is
-// already ahead of the club's time zone isn't refused for "today".
-const pastDate = (v: unknown, name: string) => {
+// pastDate: a real calendar day that is not in the future. `lenient` allows one day of slack, for the My deals forms, so a person
+// whose own calendar date is already ahead of the club's time zone isn't refused for "today".
+const pastDate = (v: unknown, name: string, lenient = false) => {
   const s = dateStr(v, name);
-  if (s > today(new Date(Date.now() + 864e5))) bad(`${name} can't be in the future`);
+  if (s > today(lenient ? new Date(Date.now() + 864e5) : undefined)) bad(`${name} can't be in the future`);
   return s;
 };
+// Distributions received: blank means none.
+const optDistributions = (v: unknown) => (v === "" || v == null ? 0 : money(v, "Distributions"));
 const posNum = (v: unknown) => {
   const n = Number(v);
   return Number.isFinite(n) && n > 0 && n <= 1e6 ? n : NaN;
@@ -122,9 +124,9 @@ function applyDealFields(d: Deal, body: any) {
 }
 
 // Record a stock split by hand: multiplies the share count and logs it. Dollars invested and the value are not touched.
-function recordSplit(d: Deal, body: any, source: string) {
+function recordSplit(d: Deal, body: any, source: string, lenient = false) {
   if (!d.sharesHeld) bad("Enter this deal's share (or unit) count first, then record the split");
-  const split = { date: pastDate(body.date, "Split date"), from: posNum(body.from), to: posNum(body.to) };
+  const split = { date: pastDate(body.date, "Split date", lenient), from: posNum(body.from), to: posNum(body.to) };
   if (Number.isNaN(split.from) || Number.isNaN(split.to)) bad("Enter the split as two positive numbers, e.g. 2 new shares for every 1 old share");
   if (!ratioOk(split)) bad("That split ratio doesn't look right (it must change the share count, and by no more than 1000 times)");
   if ((d.splitLog ?? []).some((x) => splitKey(x) === splitKey(split))) bad("That split has already been recorded for this deal");
@@ -157,7 +159,9 @@ export default async (req: Request) => {
 
   const loadView = async (viewer: Viewer) => {
     const [people, deals, holdings] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding)]);
-    const quotes = await cachedQuotes(deals.map((d) => d.ticker).filter(Boolean) as string[]);
+    // Prices only for deals this viewer can receive: the shared ones, their own, or (admin) all.
+    const mayHave = (d: Deal) => !d.ownerId || viewer.kind === "admin" || d.ownerId === viewer.person.id;
+    const quotes = await cachedQuotes(deals.filter(mayHave).map((d) => d.ticker).filter(Boolean) as string[]);
     return buildView(viewer, people, deals, holdings, quotes);
   };
   // The admin can preview exactly what a given person sees (?as=<personId>).
@@ -215,7 +219,7 @@ export default async (req: Request) => {
         await assertUniqueDealName(deal.name, undefined, mine);
         const invested = money(body.invested, "Amount invested");
         if (invested <= 0) bad("Amount invested must be more than $0");
-        const holding: Holding = { id: crypto.randomUUID().slice(0, 8), dealId: deal.id, personId: me!.id, date: pastDate(body.date, "Investment date"), invested, distributions: body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions") };
+        const holding: Holding = { id: crypto.randomUUID().slice(0, 8), dealId: deal.id, personId: me!.id, date: pastDate(body.date, "Investment date", true), invested, distributions: optDistributions(body.distributions) };
         await putOne(KINDS.deal, deal);
         try {
           await putOne(KINDS.holding, holding);
@@ -229,7 +233,7 @@ export default async (req: Request) => {
       if (!d || !d.ownerId || !(isAdmin || d.ownerId === me?.id)) return fail("Not found", 404);
       const ownHoldings = async () => (await listAll<Holding>(KINDS.holding)).filter((h) => h.dealId === d.id);
       if (action === "split" && method === "POST") {
-        recordSplit(d, await readBody(), isAdmin ? "Recorded by admin" : "Recorded by owner");
+        recordSplit(d, await readBody(), isAdmin ? "Recorded by admin" : "Recorded by owner", true);
         await putOne(KINDS.deal, d);
         return json(d);
       }
@@ -244,8 +248,8 @@ export default async (req: Request) => {
         if (invested <= 0) bad("Amount invested must be more than $0");
         const h = (await ownHoldings()).find((x) => x.personId === d.ownerId) ?? { id: crypto.randomUUID().slice(0, 8), dealId: d.id, personId: d.ownerId, date: today(), invested, distributions: 0 };
         h.invested = invested;
-        h.date = pastDate(body.date ?? h.date, "Investment date");
-        h.distributions = body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions");
+        h.date = pastDate(body.date ?? h.date, "Investment date", true);
+        h.distributions = optDistributions(body.distributions);
         await putOne(KINDS.deal, d);
         await putOne(KINDS.holding, h);
         return json({ deal: d, holding: h });
@@ -424,7 +428,7 @@ export default async (req: Request) => {
           personId: str(body.personId, "Person"),
           date: dateStr(body.date, "Investment date"),
           invested: money(body.invested, "Amount invested"),
-          distributions: body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions"),
+          distributions: optDistributions(body.distributions),
         };
         await checkRefs(h.dealId, h.personId);
         await putOne(KINDS.holding, h);
@@ -438,7 +442,7 @@ export default async (req: Request) => {
         h.personId = str(body.personId ?? h.personId, "Person");
         h.date = dateStr(body.date ?? h.date, "Investment date");
         h.invested = money(body.invested ?? h.invested, "Amount invested");
-        h.distributions = body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions");
+        h.distributions = optDistributions(body.distributions);
         await checkRefs(h.dealId, h.personId);
         await putOne(KINDS.holding, h);
         return json(h);
