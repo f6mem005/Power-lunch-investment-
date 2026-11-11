@@ -244,7 +244,7 @@ dialog[data-update]::before { content: "A new version is ready. It will load whe
 @keyframes ptrspin { to { transform: rotate(360deg); } }
 
 /* pop-up windows scroll inside themselves and never hand a swipe on to the page behind */
-dialog { overscroll-behavior: contain; }
+dialog { overscroll-behavior: contain; overflow-x: hidden; touch-action: pan-y pinch-zoom; }   /* a pop-up only moves up and down, never sideways */
 dialog.wiz { max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); }
 
 .error.ok { color: var(--good); }
