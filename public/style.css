@@ -78,9 +78,14 @@ h3 { font-size: 16px; }
 #tabs a { padding: 6px 12px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-weight: 500; }
 #tabs a:hover { background: var(--grid); }
 #tabs a[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
+#tabs .themebtn { flex: 0 0 auto; align-self: center; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); cursor: pointer; }
+#tabs .themebtn:hover { background: var(--grid); }
+#tabs .themebtn svg { display: block; }
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .actions-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--axis); color: var(--ink-2); white-space: nowrap; }
+.signout { font: inherit; font-size: 12px; font-weight: 400; color: var(--ink-2); background: transparent; border: 0; padding: 6px 8px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }   /* same type as the "Signed in as" badge */
+.signout:hover { color: var(--ink); }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
 .badge.live { color: var(--good); border-color: var(--good); }
 
@@ -212,7 +217,7 @@ dialog ol { padding-left: 20px; line-height: 1.7; }
 @media (max-width: 700px) {
   .navbar { position: static; gap: 10px; padding-top: 10px; padding-bottom: 12px; }   /* two rows of controls would eat the screen if they stayed pinned */
   #tabs { flex-basis: 100%; flex-wrap: nowrap; gap: 2px; }
-  #tabs a { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; padding: 9px 4px; font-size: clamp(12.5px, 3.5vw, 14px); }
+  #tabs a { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; padding: 9px 4px; font-size: clamp(11.5px, 3.3vw, 14px); }
   #tabs a[hidden] { display: none; }
   .actions { flex-basis: 100%; margin-left: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; align-items: end; }
   .actions .previewwrap { min-width: 0; }
@@ -220,11 +225,12 @@ dialog ol { padding-left: 20px; line-height: 1.7; }
   .actions #addInvBtn { width: 100%; padding: 10px 8px; }
   .actions-sub { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; gap: 6px; }
   .actions-sub .btn { padding-left: 8px; padding-right: 8px; }
+  #tabs .themebtn { width: 30px; height: 34px; }
   .scopebar { gap: 8px; }
   .scopebar > span { flex: 0 0 auto; }
   .scopebar button { flex: 1 1 auto; text-align: center; padding: 8px 10px; font-size: 14px; }
 }
-@media (max-width: 340px) { #tabs a { padding: 9px 1px; font-size: 12px; } }
+@media (max-width: 340px) { #tabs a { padding: 9px 1px; font-size: 11.5px; } #tabs .themebtn { width: 26px; } }
 
 dialog[data-update]::before { content: "A new version is ready. It will load when you close this window."; display: block; margin: -4px 0 12px; padding: 8px 10px; border-radius: 8px; background: var(--warn-bg); color: var(--warn-ink); font-size: 13px; }
 

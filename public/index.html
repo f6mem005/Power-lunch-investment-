@@ -47,6 +47,7 @@
         <a href="#yearend" data-tab="yearend">Year-end</a>
         <a href="#mydeals" data-tab="mydeals">My deals</a>
         <a href="#admin" data-tab="admin" id="adminTab" hidden>Manage</a>
+        <button id="themeBtn" class="themebtn" type="button" aria-label="Switch theme" title="Switch theme"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/></svg></button>
       </nav>
       <div class="actions">
         <div id="previewWrap" class="previewwrap" hidden><label for="previewSel">Preview as</label><select id="previewSel"></select></div>
@@ -54,8 +55,7 @@
         <div class="actions-sub">
           <span id="roleBadge" class="badge"></span>
           <button id="installBtn" class="btn small" type="button" hidden>Install app</button>
-          <button id="themeBtn" class="btn ghost" type="button">Theme</button>   <!-- the script names the mode it will switch to -->
-          <button id="logoutBtn" class="btn ghost" type="button">Sign out</button>
+          <button id="logoutBtn" class="signout" type="button">Sign out</button>
         </div>
       </div>
     </div>
