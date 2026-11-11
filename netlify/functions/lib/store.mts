@@ -12,6 +12,7 @@ export type Deal = {
   ticker: string | null;
   sharesHeld: number | null;
   splitLog?: SplitEntry[];
+  ownerId?: string | null; // set on a deal a person added for themselves ("My deals"): private to that person and the admin
   manualValue: number | null;
   valueSource: "placeholder" | "statement" | "estimate";
   valueAsOf: string | null;

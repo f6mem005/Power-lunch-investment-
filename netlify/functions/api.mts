@@ -62,9 +62,12 @@ const ticker = (v: unknown) => {
 };
 
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-// Deal names must be unique (case-insensitive). `exceptId` lets a deal keep its own name.
+// Deal names must be unique (case-insensitive) within their own group: the shared deals together, and each person's own deals
+// ("My deals") together. Never across groups, or a name would reveal that someone else has a private deal of that name.
+// `exceptId` lets a deal keep its own name.
 async function assertUniqueDealName(name: string, exceptId?: string, existing?: Deal[], hint = "") {
-  if ((existing ?? (await listAll<Deal>(KINDS.deal))).some((x) => x.id !== exceptId && sameName(x.name, name))) bad(`A deal with that name already exists${hint}`);
+  const group = existing ?? (await listAll<Deal>(KINDS.deal)).filter((d) => !d.ownerId);
+  if (group.some((x) => x.id !== exceptId && sameName(x.name, name))) bad(`A deal with that name already exists${hint}`);
 }
 // `today()` is the date in the club's own time zone, not UTC (at 8pm Eastern the UTC date is already tomorrow).
 // pastDate: a real calendar day that is not in the future.
@@ -96,6 +99,39 @@ function buildDeal(body: any): Deal {
     valueHistory: [],
   };
 }
+
+// Everything about a deal that is edited the same way for admin deals and a person's own deals (not name or channel).
+function applyDealFields(d: Deal, body: any) {
+  d.ticker = ticker(body.ticker);
+  d.sharesHeld = optQty(body.sharesHeld, "Shares held");
+  d.mgmtFeePct = optPct(body.mgmtFeePct, "Management fee");
+  d.carryPct = optPct(body.carryPct, "Carry");
+  d.notes = optStr(body.notes);
+  const nextValue = optMoney(body.manualValue, "Current value");
+  const keepPlaceholder = body.valueSource === "placeholder" && d.valueSource === "placeholder" && nextValue === d.manualValue;
+  const nextSource = ["statement", "estimate"].includes(body.valueSource) ? body.valueSource : keepPlaceholder ? "placeholder" : "estimate";
+  if (nextValue !== d.manualValue || nextSource !== d.valueSource) {
+    d.valueHistory = [...(d.valueHistory ?? []), { at: new Date().toISOString(), value: d.manualValue, source: d.valueSource, note: optStr(body.valueNote, 200) }].slice(-50);
+    d.manualValue = nextValue;
+    d.valueSource = nextSource;
+    d.valueAsOf = body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today();
+  } else if (body.valueAsOf && body.valueAsOf !== d.valueAsOf) {
+    d.valueAsOf = dateStr(body.valueAsOf, "Value as-of date"); // an explicit correction of the date only
+  }
+}
+
+// Record a stock split by hand: multiplies the share count and logs it. Dollars invested and the value are not touched.
+function recordSplit(d: Deal, body: any, source: string) {
+  if (!d.sharesHeld) bad("Enter this deal's share (or unit) count first, then record the split");
+  const split = { date: pastDate(body.date, "Split date"), from: posNum(body.from), to: posNum(body.to) };
+  if (Number.isNaN(split.from) || Number.isNaN(split.to)) bad("Enter the split as two positive numbers, e.g. 2 new shares for every 1 old share");
+  if (!ratioOk(split)) bad("That split ratio doesn't look right (it must change the share count, and by no more than 1000 times)");
+  if ((d.splitLog ?? []).some((x) => splitKey(x) === splitKey(split))) bad("That split has already been recorded for this deal");
+  if (!applySplit(d, split, source)) bad("That split would leave no shares");
+}
+
+const MAX_OWN_DEALS = 25; // per person, so nobody can fill the store or flood the price provider with tickers
+const OWN_DEAL_HINT = "This is a member's own deal. Open it under Members' deals to change it.";
 
 export default async (req: Request) => {
   const url = new URL(req.url);
@@ -148,8 +184,73 @@ export default async (req: Request) => {
 
     if (resource === "prices" && method === "GET") {
       const view = await loadView(await viewerFor()); // only tickers this person is allowed to see
-      const tickers = view.deals.map((d) => d.ticker).filter(Boolean) as string[];
+      const tickers = [...view.deals, ...view.ownDeals].map((d) => d.ticker).filter(Boolean) as string[];
       return json(await getQuotes(tickers));
+    }
+
+    // "My deals": a person adds and edits their own deals, which only they and the admin can see. A person can reach only deals
+    // they own (anything else is "Not found", so no one can probe for someone else's deal); the admin can reach all of them.
+    if (resource === "mine") {
+      const sub = parts[1], did = parts[2], action = parts[3];
+      if (sub !== "deals" || parts.length > 4) return fail("Not found", 404);
+      if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON", 415);
+      const readBody = async () => {
+        const b = await req.json().catch(() => bad("Invalid JSON"));
+        if (!b || typeof b !== "object" || Array.isArray(b)) bad("Invalid JSON");
+        return b as any;
+      };
+      if (!did) {
+        if (method !== "POST") return fail("Not found", 404);
+        if (!me) bad("Sign in as a person to add your own deals");
+        const body = await readBody();
+        const all = await listAll<Deal>(KINDS.deal);
+        const mine = all.filter((d) => d.ownerId === me!.id);
+        if (mine.length >= MAX_OWN_DEALS) bad(`You can add up to ${MAX_OWN_DEALS} deals`);
+        const deal = buildDeal(body);
+        deal.ownerId = me!.id;
+        deal.channel = "individual";
+        await assertUniqueDealName(deal.name, undefined, mine);
+        const invested = money(body.invested, "Amount invested");
+        if (invested <= 0) bad("Amount invested must be more than $0");
+        const holding: Holding = { id: crypto.randomUUID().slice(0, 8), dealId: deal.id, personId: me!.id, date: dateStr(body.date, "Investment date"), invested, distributions: body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions") };
+        await putOne(KINDS.deal, deal);
+        await putOne(KINDS.holding, holding);
+        return json({ deal, holding }, 201);
+      }
+      const d = await getOne<Deal>(KINDS.deal, did);
+      if (!d || !d.ownerId || !(isAdmin || d.ownerId === me?.id)) return fail("Not found", 404);
+      const ownHoldings = async () => (await listAll<Holding>(KINDS.holding)).filter((h) => h.dealId === d.id);
+      if (action === "split" && method === "POST") {
+        recordSplit(d, await readBody(), isAdmin ? "Recorded by admin" : "Recorded by owner");
+        await putOne(KINDS.deal, d);
+        return json(d);
+      }
+      if (!action && method === "PUT") {
+        const body = await readBody();
+        const newName = str(body.name ?? d.name, "Name");
+        if (!sameName(newName, d.name)) await assertUniqueDealName(newName, d.id, (await listAll<Deal>(KINDS.deal)).filter((x) => x.ownerId === d.ownerId));
+        d.name = newName;
+        d.channel = "individual";
+        applyDealFields(d, body);
+        let h = (await ownHoldings()).find((x) => x.personId === d.ownerId);
+        if (body.invested !== undefined) {
+          const invested = money(body.invested, "Amount invested");
+          if (invested <= 0) bad("Amount invested must be more than $0");
+          h = h ?? { id: crypto.randomUUID().slice(0, 8), dealId: d.id, personId: d.ownerId, date: today(), invested, distributions: 0 };
+          h.invested = invested;
+          h.date = dateStr(body.date ?? h.date, "Investment date");
+          h.distributions = body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions");
+        }
+        await putOne(KINDS.deal, d);
+        if (h) await putOne(KINDS.holding, h);
+        return json({ deal: d, holding: h ?? null });
+      }
+      if (!action && method === "DELETE") {
+        for (const h of await ownHoldings()) await deleteOne(KINDS.holding, h.id);
+        await deleteOne(KINDS.deal, d.id);
+        return json({ ok: true });
+      }
+      return fail("Not found", 404);
     }
 
     // Everything below changes data and needs the admin passcode.
@@ -217,16 +318,11 @@ export default async (req: Request) => {
     }
 
     if (resource === "deals") {
-      // Record a stock split by hand: multiplies the share count and logs it. Dollars invested and the value are not touched.
       if (id && parts[2] === "split" && method === "POST") {
         const d = await getOne<Deal>(KINDS.deal, id);
         if (!d) return fail("Not found", 404);
-        if (!d.sharesHeld) bad("Enter this deal's share (or unit) count first, then record the split");
-        const split = { date: pastDate(body.date, "Split date"), from: posNum(body.from), to: posNum(body.to) };
-        if (Number.isNaN(split.from) || Number.isNaN(split.to)) bad("Enter the split as two positive numbers, e.g. 2 new shares for every 1 old share");
-        if (!ratioOk(split)) bad("That split ratio doesn't look right (it must change the share count, and by no more than 1000 times)");
-        if ((d.splitLog ?? []).some((x) => splitKey(x) === splitKey(split))) bad("That split has already been recorded for this deal");
-        if (!applySplit(d, split, "Recorded by admin")) bad("That split would leave no shares");
+        if (d.ownerId) bad(OWN_DEAL_HINT);
+        recordSplit(d, body, "Recorded by admin");
         await putOne(KINDS.deal, d);
         return json(d);
       }
@@ -239,30 +335,17 @@ export default async (req: Request) => {
       if (method === "PUT" && id) {
         const d = await getOne<Deal>(KINDS.deal, id);
         if (!d) return fail("Not found", 404);
+        if (d.ownerId) bad(OWN_DEAL_HINT);
         const newName = str(body.name ?? d.name, "Name");
         if (!sameName(newName, d.name)) await assertUniqueDealName(newName, d.id); // only when the name is actually being changed
         d.name = newName;
         d.channel = body.channel === "individual" ? "individual" : "club";
-        d.ticker = ticker(body.ticker);
-        d.sharesHeld = optQty(body.sharesHeld, "Shares held");
-        d.mgmtFeePct = optPct(body.mgmtFeePct, "Management fee");
-        d.carryPct = optPct(body.carryPct, "Carry");
-        d.notes = optStr(body.notes);
-        const nextValue = optMoney(body.manualValue, "Current value");
-        const keepPlaceholder = body.valueSource === "placeholder" && d.valueSource === "placeholder" && nextValue === d.manualValue;
-        const nextSource = ["statement", "estimate"].includes(body.valueSource) ? body.valueSource : keepPlaceholder ? "placeholder" : "estimate";
-        if (nextValue !== d.manualValue || nextSource !== d.valueSource) {
-          d.valueHistory = [...(d.valueHistory ?? []), { at: new Date().toISOString(), value: d.manualValue, source: d.valueSource, note: optStr(body.valueNote, 200) }].slice(-50);
-          d.manualValue = nextValue;
-          d.valueSource = nextSource;
-          d.valueAsOf = body.valueAsOf ? dateStr(body.valueAsOf, "Value as-of date") : today();
-        } else if (body.valueAsOf && body.valueAsOf !== d.valueAsOf) {
-          d.valueAsOf = dateStr(body.valueAsOf, "Value as-of date"); // an explicit correction of the date only
-        }
+        applyDealFields(d, body);
         await putOne(KINDS.deal, d);
         return json(d);
       }
       if (method === "DELETE" && id) {
+        if ((await getOne<Deal>(KINDS.deal, id))?.ownerId) bad(OWN_DEAL_HINT);
         const mine = (await listAll<Holding>(KINDS.holding)).filter((h) => h.dealId === id);
         if (mine.length && url.searchParams.get("cascade") !== "1") return fail("This deal still has holdings. Confirm deleting them too.", 409);
         for (const h of mine) await deleteOne(KINDS.holding, h.id);
@@ -280,10 +363,11 @@ export default async (req: Request) => {
       if (body.dealId) {
         deal = deals.find((d) => d.id === body.dealId);
         if (!deal) bad("Unknown deal");
+        if (deal!.ownerId) bad(OWN_DEAL_HINT);
       } else {
         deal = buildDeal(body.deal ?? {});
         isNewDeal = true;
-        await assertUniqueDealName(deal.name, undefined, deals, " - choose it as an existing deal instead");
+        await assertUniqueDealName(deal.name, undefined, deals.filter((d) => !d.ownerId), " - choose it as an existing deal instead");
       }
       const investors: any[] = Array.isArray(body.investors) ? body.investors : [];
       if (!investors.length) bad("Add at least one investor");
@@ -319,8 +403,14 @@ export default async (req: Request) => {
 
     if (resource === "holdings") {
       const checkRefs = async (dealId: string, personId: string) => {
-        if (!(await getOne(KINDS.deal, dealId))) bad("Unknown deal");
+        const deal = await getOne<Deal>(KINDS.deal, dealId);
+        if (!deal) bad("Unknown deal");
+        if (deal!.ownerId) bad(OWN_DEAL_HINT); // a person's own deal has only its owner as investor
         if (!(await getOne(KINDS.person, personId))) bad("Unknown person");
+      };
+      const inOwnDeal = async (hid: string) => {
+        const h = await getOne<Holding>(KINDS.holding, hid);
+        return !!h && !!(await getOne<Deal>(KINDS.deal, h.dealId))?.ownerId;
       };
       if (method === "POST") {
         const h: Holding = {
@@ -338,6 +428,7 @@ export default async (req: Request) => {
       if (method === "PUT" && id) {
         const h = await getOne<Holding>(KINDS.holding, id);
         if (!h) return fail("Not found", 404);
+        if (await inOwnDeal(id)) bad(OWN_DEAL_HINT);
         h.dealId = str(body.dealId ?? h.dealId, "Deal");
         h.personId = str(body.personId ?? h.personId, "Person");
         h.date = dateStr(body.date ?? h.date, "Investment date");
@@ -348,6 +439,7 @@ export default async (req: Request) => {
         return json(h);
       }
       if (method === "DELETE" && id) {
+        if (await inOwnDeal(id)) bad(OWN_DEAL_HINT);
         await deleteOne(KINDS.holding, id);
         return json({ ok: true });
       }

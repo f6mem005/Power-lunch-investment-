@@ -31,6 +31,19 @@ Enforced on the server (the browser is only sent what the person may see):
 | Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Year-end tab. |
 | Non-member | Only the deals they hold. No other club deals, no Year-end tab. |
 
+### My deals (private deals a person adds for themselves)
+
+Anyone who signs in (members and non-members) can add their own deals under the **My deals** tab and edit or delete everything on
+them: the deal's details and terms, their own amount, date and distributions, and stock splits. Rules, all enforced on the server:
+
+- A deal added this way is visible **only to the person who added it and to the admin**. It is never sent to anyone else, whatever else is true
+  (no club membership, no stake, no preview of someone else), and it is kept out of the shared lists, people, totals, quotes and Year-end.
+- It can't have other investors. Nobody, the admin included, can add another person's holding to it.
+- A person can change **only deals they added**, not deals the admin manages. The admin can edit any of them: **Manage > Members' own deals**.
+  Someone else's deal id answers "Not found", so no one can probe for it.
+- Deal names only have to be unique among a person's own deals, so a name never reveals that someone else has a private deal of that name.
+- Each person can have up to 25 of these deals.
+
 A safety net remains in the code: for any deal someone could only partly see, the server would withhold the deal
 total, share-of-deal %, deal value, share count, value history and notes. The current rule never needs it.
 

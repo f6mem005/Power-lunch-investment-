@@ -46,7 +46,7 @@
 
   const state = {
     scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
-    role: null, me: null, previewOf: null, passcodes: {}, priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
+    role: null, me: null, previewOf: null, passcodes: {}, ownDeals: [], ownHoldings: [], priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
   };
 
   async function api(path, opts = {}) {
@@ -319,7 +319,9 @@
       .map((h) => `<tr><td>${esc(dealById(h.dealId)?.name)}</td><td>${esc(personById(h.personId)?.name)}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td><td class="num">${money(h.distributions)}</td>
         <td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button> <button class="btn small danger" data-del-holding="${esc(h.id)}">Delete</button></td></tr>`)
       .join("");
+    const ownCount = state.ownDeals.length, ownPeople = new Set(state.ownDeals.map((d) => d.ownerId)).size;
     return `<div class="stack">
+      <div class="card"><h2>Members' own deals</h2><p class="muted" style="margin-top:0">Deals members add for themselves are private to the member and to you, and are left out of the club's totals. ${ownCount ? `<strong>${ownCount}</strong> deal${ownCount === 1 ? "" : "s"} from <strong>${ownPeople}</strong> member${ownPeople === 1 ? "" : "s"}.` : "None have been added yet."}</p><a class="btn" href="#mydeals">Open members' own deals</a></div>
       <div class="card"><h2>Backup</h2><p class="muted" style="margin-top:0">Everything here can be edited or deleted with no undo. Download a copy before big changes.</p><a class="btn" href="/api/export" download>Download backup (JSON)</a></div>
       <div class="card"><h2>Guided setup</h2><p class="muted" style="margin-top:0">Answer a few questions instead of filling in forms.</p>
         <div class="row-actions" style="margin-top:0"><button class="btn primary" type="button" data-wiz="add">Add an investment</button><button class="btn" type="button" data-wiz="complete">Fill in missing deal details</button></div></div>
@@ -354,6 +356,53 @@
       </div>
       <div class="card"><h2>All deals</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Held through</th><th>Terms</th><th></th></tr></thead><tbody>${state.deals.map((d) => `<tr><td>${esc(d.name)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}</span>` : ""}</td><td>${d.channel === "individual" ? "Individual" : "Power Lunch Club"}</td><td>${esc(termsText(d) || "not entered")}</td><td class="num"><button class="btn small" data-edit-deal="${esc(d.id)}">Edit</button></td></tr>`).join("")}</tbody></table></div></div>
       <div class="card"><h2>All holdings</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Person</th><th>Date</th><th class="num">Invested</th><th class="num">Distributions</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+  }
+
+  // ---------- My deals: deals a person adds for themselves; private to them and the admin ----------
+  const ownBadge = (d) => (d.basis === "live" ? '<span class="badge live">Live price</span>' : d.basis === "statement" ? '<span class="badge">Statement</span>' : `<span class="badge warn">${d.basis === "cost" ? "At cost" : "Estimate"}</span>`);
+  function mydeals() {
+    const adminAll = state.role === "admin" && !state.previewOf;
+    const canAdd = !!state.me && !state.previewOf;
+    const list = state.ownDeals.slice().sort((a, b) => (personById(a.ownerId)?.name || "").localeCompare(personById(b.ownerId)?.name || "") || a.name.localeCompare(b.name));
+    const cards = list.map((d) => {
+      const hs = state.ownHoldings.filter((h) => h.dealId === d.id);
+      const invested = hs.reduce((s, h) => s + h.invested, 0), net = hs.reduce((s, h) => s + h.value, 0), dist = hs.reduce((s, h) => s + h.distributions, 0), carry = hs.reduce((s, h) => s + h.carry, 0);
+      const gain = net + dist - invested;
+      return `<div class="card" id="own-${esc(d.id)}"><div class="person-head"><h3>${esc(d.name)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
+        <span><button class="btn small" data-edit-own="${esc(d.id)}">Edit deal</button></span></div>
+        ${adminAll ? `<p class="muted" style="margin:0 0 10px">Added by <strong>${esc(personById(d.ownerId)?.name || "someone")}</strong></p>` : ""}
+        <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : ""}Invested <strong>${money(invested)}</strong> · Net value <strong>${money(net)}</strong> ${ownBadge(d)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, invested)}) net of carry</span></p>
+        <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Carry ${money(carry)}${dist ? ` · distributions received ${money(dist)}` : ""}${d.basis !== "live" && d.valueAsOf ? ` · value as of ${dateFmt(d.valueAsOf)}` : ""}</p>
+        ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
+        ${d.ticker && !d.needsShares && !d.price ? `<p class="muted">Live price unavailable: ${esc(d.priceError || state.priceErrors[d.ticker] || "still checking")}</p>` : ""}
+        ${splitNotice(d)}
+        ${d.notes ? `<p class="muted">${esc(d.notes)}</p>` : ""}</div>`;
+    });
+    return `<div class="stack">
+      <div class="card"><h2>${adminAll ? "Members' own deals" : "My deals"}</h2>
+        <p class="muted" style="margin-top:0">${adminAll ? "Deals members added for themselves. Each one is visible only to the member who added it and to you, and is left out of the club's totals and the year-end figures. You can edit any of them." : "Deals you add here are private: only you and the admin can see them. They are kept apart from the club's deals and from your other investments, and are not part of any club totals. You can edit or delete them, but you can't add other investors."}</p>
+        ${canAdd ? '<div class="row-actions" style="margin-top:0"><button class="btn primary" type="button" data-add-own>Add a deal</button></div>' : ""}${adminAll ? '<a class="btn" href="#admin">Back to Manage</a>' : ""}</div>
+      ${cards.length ? cards.join("") : `<div class="card"><p class="muted" style="margin:0">${adminAll ? "No member has added a deal yet." : "You haven't added any deals yet."}</p></div>`}</div>`;
+  }
+  function addOwnDeal() {
+    openDialog(
+      `<h2>Add a deal</h2>
+      <p class="muted" style="margin-top:0">Only you and the admin will see this deal.</p>
+      <div class="form-grid">
+        <div><label for="o-name">Deal name</label><input id="o-name" name="name" required maxlength="120"></div>
+        <div><label for="o-inv">Amount you invested ($)</label><input id="o-inv" name="invested" type="number" min="0" step="0.01" inputmode="decimal" required></div>
+        <div><label for="o-date">Date invested</label><input id="o-date" name="date" type="date" max="${today()}" value="${today()}" required></div>
+        <div><label for="o-tk">Ticker (if public)</label><input id="o-tk" name="ticker" maxlength="10"></div>
+        <div><label for="o-sh">Shares held (whole deal)</label><input id="o-sh" name="sharesHeld" type="number" min="0" step="any"></div>
+        <div><label for="o-val">Current value ($, whole deal, before carry)</label><input id="o-val" name="manualValue" type="number" min="0" step="0.01"></div>
+        <div><label for="o-src">Where does the value come from?</label><select id="o-src" name="valueSource"><option value="estimate">My estimate</option><option value="statement">A statement</option></select></div>
+        <div><label for="o-fee">Upfront mgmt fee (% of amount invested)</label><input id="o-fee" name="mgmtFeePct" type="number" min="0" max="100" step="0.01"></div>
+        <div><label for="o-carry">Carry (% of profit)</label><input id="o-carry" name="carryPct" type="number" min="0" max="100" step="0.01"></div>
+      </div>
+      <label for="o-notes">Notes</label><input id="o-notes" name="notes" maxlength="500">
+      <p class="muted">If you give a ticker and a share count, the live price is used instead of the value you type.</p>`,
+      (f) => api("/api/mine/deals", { method: "POST", body: f }),
+    );
   }
 
   // ---------- dialogs ----------
@@ -417,13 +466,23 @@
       try { await api(`/api/people/${id}/passcode`, { method: "DELETE" }); dlg.close(); await refresh(); } catch (err) { $("[data-err]", dlg).textContent = err.message; }
     });
   }
-  function editDeal(id) {
-    const d = dealById(id);
+  const ownHoldingOf = (dealId) => state.ownHoldings.find((h) => h.dealId === dealId);
+  async function deleteOwnDeal(id) {
+    const d = state.ownDeals.find((x) => x.id === id);
+    if (!confirm(`Delete "${d.name}" and the investment in it? This can't be undone.`)) return false;
+    await api(`/api/mine/deals/${id}`, { method: "DELETE" });
+    return true;
+  }
+  // own = a deal a person added for themselves (My deals); otherwise one of the shared deals the admin manages.
+  function editDeal(id, own = false) {
+    const d = own ? state.ownDeals.find((x) => x.id === id) : dealById(id);
+    const h = own ? ownHoldingOf(id) : null;
+    const base = own ? `/api/mine/deals/${id}` : `/api/deals/${id}`;
     openDialog(
       `<h2>${esc(d.name)}</h2>
       <div class="form-grid">
         <div><label for="e-name">Name</label><input id="e-name" name="name" value="${esc(d.name)}" required></div>
-        <div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Power Lunch Club</option><option value="individual"${d.channel === "individual" ? " selected" : ""}>Individual</option></select></div>
+        ${own ? "" : `<div><label for="e-ch">Held through</label><select id="e-ch" name="channel"><option value="club"${d.channel === "club" ? " selected" : ""}>Power Lunch Club</option><option value="individual"${d.channel === "individual" ? " selected" : ""}>Individual</option></select></div>`}
         <div><label for="e-tk">Ticker (if public)</label><input id="e-tk" name="ticker" value="${esc(d.ticker || "")}"></div>
         <div><label for="e-sh">Shares held (whole deal)</label><div style="display:flex;gap:8px;align-items:center"><input id="e-sh" name="sharesHeld" type="number" min="0" step="any" value="${d.sharesHeld ?? ""}" style="flex:1;min-width:0"><button class="btn small" type="button" id="sp-open" aria-expanded="false" aria-controls="sp-panel">Record a split…</button></div></div>
         <div id="sp-panel" hidden style="grid-column:1/-1;margin:10px 0 4px;border:1px solid var(--grid);border-radius:10px;padding:12px">
@@ -446,14 +505,17 @@
         <div><label for="e-val">Current value ($, whole deal, before carry)</label><input id="e-val" name="manualValue" type="number" min="0" step="0.01" value="${d.manualValue ?? ""}"></div>
         <div><label for="e-src">Value source</label><select id="e-src" name="valueSource">${d.valueSource === "placeholder" ? '<option value="placeholder" selected>Placeholder (from spreadsheet)</option>' : ""}<option value="statement"${d.valueSource === "statement" ? " selected" : ""}>From a statement</option><option value="estimate"${d.valueSource === "estimate" ? " selected" : ""}>Estimate</option></select></div>
         <div><label for="e-asof">Value as-of date</label><input id="e-asof" name="valueAsOf" type="date" value="${d.valueAsOf || ""}"></div>
+        ${own ? `<div><label for="e-inv">Amount you invested ($)</label><input id="e-inv" name="invested" type="number" min="0" step="0.01" value="${h?.invested ?? ""}" required></div>
+        <div><label for="e-idate">Date invested</label><input id="e-idate" name="date" type="date" value="${esc(h?.date || today())}" required></div>
+        <div><label for="e-dist">Distributions received ($)</label><input id="e-dist" name="distributions" type="number" min="0" step="0.01" value="${h?.distributions ?? 0}"></div>` : ""}
       </div>
       <label for="e-vn">Note for the value history (optional)</label><input id="e-vn" name="valueNote">
       <label for="e-notes">Deal notes</label><input id="e-notes" name="notes" value="${esc(d.notes || "")}">
       <p class="muted">If a ticker and share count are both set and a live price is available, the live price overrides the manual value.</p>
       ${d.splitLog?.length ? `<details><summary>Split history (${d.splitLog.length})</summary><ul>${d.splitLog.slice().reverse().map((x) => `<li>${dateFmt(x.date)}: ${esc(String(x.to))}-for-${esc(String(x.from))}, ${fmtShares(x.before)} → ${fmtShares(x.after)} shares (recorded by you)</li>`).join("")}</ul></details>` : ""}
       ${d.valueHistory?.length ? `<details><summary>Value history (${d.valueHistory.length})</summary><ul>${d.valueHistory.slice().reverse().map((v) => `<li>${esc(new Date(v.at).toLocaleDateString())}: ${money(v.value)} (${esc(v.source)})${v.note ? ` - ${esc(v.note)}` : ""}</li>`).join("")}</ul></details>` : ""}`,
-      (f) => api(`/api/deals/${id}`, { method: "PUT", body: f }),
-      { label: "Delete deal", run: () => deleteDeal(id) },
+      (f) => api(base, { method: "PUT", body: f }),
+      { label: "Delete deal", run: () => (own ? deleteOwnDeal(id) : deleteDeal(id)) },
     );
     $("#sp-open", dlg).onclick = (e) => {
       const panel = $("#sp-panel", dlg), show = panel.hidden;
@@ -479,7 +541,7 @@
         if (formState() !== openState && !confirm("You have unsaved changes in this window. Recording the split saves right away and discards them. Record the split anyway?")) return;
         run.disabled = save.disabled = true; err.textContent = "";   // Save is held too, so it can't write the old share count over the new one
         try {
-          await api(`/api/deals/${id}/split`, { method: "POST", body: { to, from, date } });
+          await api(`${base}/split`, { method: "POST", body: { to, from, date } });
         } catch (e) { err.textContent = e.message; run.disabled = save.disabled = false; return; }
         dlg.close();
         try { await refresh(); } catch { setTimeout(() => refresh(false, true).catch(() => {}), 3000); }   // the split is saved; only the reload failed
@@ -505,7 +567,7 @@
 
   // ---------- shell ----------
   const view = $("#view");
-  const views = { overview, people, deals, yearend, admin };
+  const views = { overview, people, deals, yearend, mydeals, admin };
   const isAdminSession = () => state.role === "admin" || !!state.previewOf;
   const canYearEnd = () => state.role === "admin" || state.me?.type === "member";
   function allowedScopes() {
@@ -519,10 +581,12 @@
     if (!views[tab] || (tab === "admin" && state.role !== "admin") || (tab === "yearend" && !canYearEnd())) tab = "overview";
     const scopes = allowedScopes();
     if (!scopes[state.scope]) { state.scope = Object.keys(scopes)[0]; derive(); }
-    document.querySelectorAll("#tabs a").forEach((a) => (a.dataset.tab === tab ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
+    const adminOwn = tab === "mydeals" && state.role === "admin" && !state.previewOf;
+    document.querySelectorAll("#tabs a").forEach((a) => (a.dataset.tab === tab || (adminOwn && a.dataset.tab === "admin") ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
     $("#adminTab").hidden = state.role !== "admin";
     $("#addInvBtn").hidden = state.role !== "admin";
     document.querySelector('#tabs a[data-tab="yearend"]').hidden = !canYearEnd();
+    document.querySelector('#tabs a[data-tab="mydeals"]').hidden = state.role === "admin" && !state.previewOf; // the admin opens these from Manage, so the tab bar keeps its five tabs
     $("#roleBadge").textContent = state.role === "admin" ? "Admin" : state.me ? `Signed in as ${state.me.name}` : "";
     const sel = $("#previewSel");
     $("#previewWrap").hidden = !isAdminSession();
@@ -534,7 +598,7 @@
     if (state.previewOf) bar.innerHTML = `Previewing exactly what <strong>${esc(state.me?.name || "this person")}</strong> sees. Read-only. <button class="btn small" type="button" data-exit-preview>Back to admin view</button>`;
     const keys = Object.keys(scopes);
     $("#scopeBar").innerHTML = `<span class="muted">Show</span>${keys.map((k) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${esc(scopes[k])}</button>`).join("")}`;
-    $("#scopeBar").hidden = tab === "yearend" || keys.length < 2;
+    $("#scopeBar").hidden = tab === "yearend" || tab === "mydeals" || keys.length < 2;
     view.innerHTML = views[tab]();
     // Arrived from a link on the Overview: scroll to that deal/person and flash it once (not again on later refreshes).
     if (focusId && state.focusShown !== location.hash) {
@@ -582,13 +646,13 @@
 
   async function refresh(afterPrices = false, soft = false) {
     const data = await api(`/api/data${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`);
-    Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, quotes: data.quotes || {} });
+    Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, ownDeals: data.ownDeals || [], ownHoldings: data.ownHoldings || [], quotes: data.quotes || {} });
     if (data.role === "admin") Object.assign(state, { adminPeople: data.people, passcodes: data.passcodes || {} });
     if (!state.scope || !allowedScopes()[state.scope]) state.scope = Object.keys(allowedScopes())[0];
     derive();
     if (soft) softRender(); else render();
     // Live prices refresh separately so a slow quote provider never blocks the page; reload once if any price moved.
-    if (!afterPrices && state.deals.some((d) => d.ticker)) {
+    if (!afterPrices && [...state.deals, ...state.ownDeals].some((d) => d.ticker)) {
       api(`/api/prices${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`).then((q) => {
         // Keep the provider's own error text so the Deals tab can say why a price is missing.
         state.priceErrors = Object.fromEntries(Object.entries(q).filter(([, v]) => v.price == null || v.stale || v.error).map(([k, v]) => [k, `${v.error || (v.stale ? "the last live price is out of date" : "no price returned")} (source: ${v.source})`]));
@@ -685,6 +749,8 @@
     if (t.dataset.wiz === "add") window.PLC.wizard.addInvestment();
     if (t.dataset.wiz === "complete") window.PLC.wizard.completeDetails();
     if (t.hasAttribute("data-csv-yearend")) yearEndCsv();
+    if (t.dataset.editOwn) editDeal(t.dataset.editOwn, true);
+    if (t.hasAttribute("data-add-own")) addOwnDeal();
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);
     if (t.dataset.editPerson) editPerson(t.dataset.editPerson);
     if (t.dataset.editHolding) editHolding(t.dataset.editHolding);
