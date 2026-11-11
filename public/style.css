@@ -84,7 +84,7 @@ h3 { font-size: 16px; }
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .actions-sub { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--axis); color: var(--ink-2); white-space: nowrap; }
-.signout { font: inherit; font-size: 12px; font-weight: 400; color: var(--ink-2); background: transparent; border: 0; padding: 6px 8px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }   /* same type as the "Signed in as" badge */
+.signout { font: inherit; font-size: 12px; font-weight: 400; color: var(--ink-2); background: transparent; border: 0; padding: 9px 10px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }   /* same type as the "Signed in as" badge */
 .signout:hover { color: var(--ink); }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
 .badge.live { color: var(--good); border-color: var(--good); }

@@ -670,6 +670,7 @@
     $("#showPass").checked = false; $("#passcode").type = "password";   // never leave a passcode showing on the next visit
     $("#passcode").focus();
   }
+  addEventListener("pageshow", () => { if (!$("#login").hidden) { $("#showPass").checked = false; $("#passcode").type = "password"; } });   // a page restored from the back/forward cache
   async function showApp() {
     $("#login").hidden = true;
     $("#showPass").checked = false; $("#passcode").type = "password";

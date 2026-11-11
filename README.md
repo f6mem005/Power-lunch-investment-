@@ -20,6 +20,14 @@ sign in (fails closed). There is no shared viewer passcode: everyone else signs 
 personal passcode that the admin sets in People > Edit (stored hashed; changing or removing it signs that
 person out).
 
+## Signing in
+
+Each person signs in with their name and their personal passcode (the admin leaves the name blank and uses the admin passcode).
+The name isn't case-sensitive. A passcode pasted from a message often gains a trailing space or a capital first letter, so the
+sign-in forgives stray spaces around any passcode, and also accepts a lowercase version of a personal passcode (generated passcodes
+are all lowercase). A passcode set with capitals must still be typed with them, and the admin passcode stays case-sensitive.
+The sign-in screen has a **Show passcode** tick so a typo is visible.
+
 ## Who sees what
 
 Enforced on the server (the browser is only sent what the person may see):
