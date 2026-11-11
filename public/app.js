@@ -663,9 +663,11 @@
     }
   }
 
+  $("#showPass").onchange = (e) => { $("#passcode").type = e.target.checked ? "text" : "password"; };
   function showLogin() {
     $("#app").hidden = true;
     $("#login").hidden = false;
+    $("#showPass").checked = false; $("#passcode").type = "password";   // never leave a passcode showing on the next visit
     $("#passcode").focus();
   }
   async function showApp() {

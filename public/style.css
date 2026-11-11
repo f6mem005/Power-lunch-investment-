@@ -155,6 +155,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .login-card { width: min(380px, 100%); }
 .login-card h1 { font-size: 22px; }
 .login-card .btn { width: 100%; margin-top: 6px; }
+.login-card .showpass { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-weight: 400; cursor: pointer; }
+.login-card .showpass input { width: auto; margin: 0; }
 
 @media (max-width: 560px) {
   .bar-row { grid-template-columns: 70px 1fr 80px; }
