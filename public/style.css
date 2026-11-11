@@ -182,7 +182,7 @@ dialog.wiz { width: min(640px, calc(100vw - 24px)); max-height: calc(100vh - 24p
 .inv-head { display: flex; justify-content: space-between; align-items: center; min-height: 28px; }
 .inv-new { margin-top: 2px; padding: 2px 0 4px 10px; border-left: 3px solid var(--accent); }
 .review { table-layout: fixed; width: 100%; }                       /* a long unbroken name or link wraps inside the window instead of widening it */
-.review th { width: 34%; vertical-align: top; }
+.review th { width: 34%; vertical-align: top; white-space: normal; }
 .review th, .review td { overflow-wrap: anywhere; }
 .wiz-choices { display: grid; gap: 10px; margin-top: 16px; }
 .btn.big { padding: 14px 16px; text-align: left; font-size: 16px; }
