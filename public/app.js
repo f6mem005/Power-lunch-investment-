@@ -702,7 +702,7 @@
   const isDark = () => document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
   const paintTheme = () => {
     const dark = isDark(), btn = $("#themeBtn");
-    btn.textContent = dark ? "☀ Regular mode" : "☾ Dark mode";
+    btn.textContent = dark ? "☀\uFE0E Regular mode" : "☾\uFE0E Dark mode";   // \uFE0E keeps the symbols plain text, not colour emoji
     btn.setAttribute("aria-label", dark ? "Switch to regular (light) mode" : "Switch to dark mode");
   };
   $("#themeBtn").onclick = () => {
@@ -710,7 +710,7 @@
     try { localStorage.setItem("plc-theme", document.documentElement.dataset.theme); } catch {}
     paintTheme();
   };
-  try { const t = localStorage.getItem("plc-theme"); if (t) document.documentElement.dataset.theme = t; } catch {}
+  try { const t = localStorage.getItem("plc-theme"); if (t === "dark" || t === "light") document.documentElement.dataset.theme = t; } catch {}
   paintTheme();
   matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", paintTheme);   // follows the phone's setting until you choose
   addEventListener("hashchange", () => state.d && render());
