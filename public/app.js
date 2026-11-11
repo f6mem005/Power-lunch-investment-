@@ -672,6 +672,7 @@
   }
   async function showApp() {
     $("#login").hidden = true;
+    $("#showPass").checked = false; $("#passcode").type = "password";
     $("#app").hidden = false;     // shown first: a deep link such as #deals/openai has to scroll to its card
     try { await refresh(); } catch (e) {
       $("#app").hidden = true; $("#login").hidden = false;   // loading failed: back to the sign-in screen, where the message can be seen

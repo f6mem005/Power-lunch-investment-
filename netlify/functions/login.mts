@@ -23,7 +23,9 @@ export default async (req: Request) => {
 
   // Blank name = the admin passcode.
   if (!name) {
-    if (!(await checkAdminPasscode(passcode))) return json({ error: DENIED }, 401);
+    // Surrounding whitespace is forgiven (a pasted secret often carries a trailing space or newline); the case is not.
+    const adminForms = [...new Set([passcode, passcode.trim()])].filter(Boolean);
+    if (!(await Promise.all(adminForms.map((f) => checkAdminPasscode(f)))).some(Boolean)) return json({ error: DENIED }, 401);
     return json({ role: "admin" }, 200, { "set-cookie": await makeCookie({ kind: "admin" }) });
   }
 
