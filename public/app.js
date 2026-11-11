@@ -359,7 +359,6 @@
   }
 
   // ---------- My deals: deals a person adds for themselves; private to them and the admin ----------
-  const ownBadge = (d) => (d.basis === "live" ? '<span class="badge live">Live price</span>' : d.basis === "statement" ? '<span class="badge">Statement</span>' : `<span class="badge warn">${d.basis === "cost" ? "At cost" : "Estimate"}</span>`);
   function mydeals() {
     const adminAll = state.role === "admin" && !state.previewOf;
     const canAdd = !!state.me && !state.previewOf;
@@ -369,9 +368,9 @@
       const invested = hs.reduce((s, h) => s + h.invested, 0), net = hs.reduce((s, h) => s + h.value, 0), dist = hs.reduce((s, h) => s + h.distributions, 0), carry = hs.reduce((s, h) => s + h.carry, 0);
       const gain = net + dist - invested;
       return `<div class="card" id="own-${esc(d.id)}"><div class="person-head"><h3>${esc(d.name)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
-        <span><button class="btn small" data-edit-own="${esc(d.id)}">Edit deal</button></span></div>
+        <span>${state.previewOf ? "" : `<button class="btn small" data-edit-own="${esc(d.id)}">Edit deal</button>`}</span></div>
         ${adminAll ? `<p class="muted" style="margin:0 0 10px">Added by <strong>${esc(personById(d.ownerId)?.name || "someone")}</strong></p>` : ""}
-        <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : ""}Invested <strong>${money(invested)}</strong> · Net value <strong>${money(net)}</strong> ${ownBadge(d)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, invested)}) net of carry</span></p>
+        <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : ""}Invested <strong>${money(invested)}</strong> · Net value <strong>${money(net)}</strong> ${basisBadge({ basis: d.basis, note: dealNote(d) })} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, invested)}) net of carry</span></p>
         <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Carry ${money(carry)}${dist ? ` · distributions received ${money(dist)}` : ""}${d.basis !== "live" && d.valueAsOf ? ` · value as of ${dateFmt(d.valueAsOf)}` : ""}</p>
         ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
         ${d.ticker && !d.needsShares && !d.price ? `<p class="muted">Live price unavailable: ${esc(d.priceError || state.priceErrors[d.ticker] || "still checking")}</p>` : ""}
@@ -469,6 +468,7 @@
   const ownHoldingOf = (dealId) => state.ownHoldings.find((h) => h.dealId === dealId);
   async function deleteOwnDeal(id) {
     const d = state.ownDeals.find((x) => x.id === id);
+    if (!d) return true; // already gone (deleted elsewhere); just close and reload
     if (!confirm(`Delete "${d.name}" and the investment in it? This can't be undone.`)) return false;
     await api(`/api/mine/deals/${id}`, { method: "DELETE" });
     return true;

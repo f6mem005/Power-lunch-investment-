@@ -188,17 +188,19 @@ export default async (req: Request) => {
       return json(await getQuotes(tickers));
     }
 
+    const notJson = () => method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json");
+    const readBody = async () => {
+      const b = await req.json().catch(() => bad("Invalid JSON"));
+      if (!b || typeof b !== "object" || Array.isArray(b)) bad("Invalid JSON"); // JSON "null", numbers etc. parse fine but are not a request
+      return b as any;
+    };
+
     // "My deals": a person adds and edits their own deals, which only they and the admin can see. A person can reach only deals
     // they own (anything else is "Not found", so no one can probe for someone else's deal); the admin can reach all of them.
     if (resource === "mine") {
       const sub = parts[1], did = parts[2], action = parts[3];
       if (sub !== "deals" || parts.length > 4) return fail("Not found", 404);
-      if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON", 415);
-      const readBody = async () => {
-        const b = await req.json().catch(() => bad("Invalid JSON"));
-        if (!b || typeof b !== "object" || Array.isArray(b)) bad("Invalid JSON");
-        return b as any;
-      };
+      if (notJson()) return fail("Expected JSON", 415);
       if (!did) {
         if (method !== "POST") return fail("Not found", 404);
         if (!me) bad("Sign in as a person to add your own deals");
@@ -212,9 +214,14 @@ export default async (req: Request) => {
         await assertUniqueDealName(deal.name, undefined, mine);
         const invested = money(body.invested, "Amount invested");
         if (invested <= 0) bad("Amount invested must be more than $0");
-        const holding: Holding = { id: crypto.randomUUID().slice(0, 8), dealId: deal.id, personId: me!.id, date: dateStr(body.date, "Investment date"), invested, distributions: body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions") };
+        const holding: Holding = { id: crypto.randomUUID().slice(0, 8), dealId: deal.id, personId: me!.id, date: pastDate(body.date, "Investment date"), invested, distributions: body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions") };
         await putOne(KINDS.deal, deal);
-        await putOne(KINDS.holding, holding);
+        try {
+          await putOne(KINDS.holding, holding);
+        } catch (e) {
+          await deleteOne(KINDS.deal, deal.id).catch(() => {}); // don't leave a deal with no investment behind
+          throw e;
+        }
         return json({ deal, holding }, 201);
       }
       const d = await getOne<Deal>(KINDS.deal, did);
@@ -232,18 +239,15 @@ export default async (req: Request) => {
         d.name = newName;
         d.channel = "individual";
         applyDealFields(d, body);
-        let h = (await ownHoldings()).find((x) => x.personId === d.ownerId);
-        if (body.invested !== undefined) {
-          const invested = money(body.invested, "Amount invested");
-          if (invested <= 0) bad("Amount invested must be more than $0");
-          h = h ?? { id: crypto.randomUUID().slice(0, 8), dealId: d.id, personId: d.ownerId, date: today(), invested, distributions: 0 };
-          h.invested = invested;
-          h.date = dateStr(body.date ?? h.date, "Investment date");
-          h.distributions = body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions");
-        }
+        const invested = money(body.invested, "Amount invested");   // required: a deal always has its owner's investment
+        if (invested <= 0) bad("Amount invested must be more than $0");
+        const h = (await ownHoldings()).find((x) => x.personId === d.ownerId) ?? { id: crypto.randomUUID().slice(0, 8), dealId: d.id, personId: d.ownerId, date: today(), invested, distributions: 0 };
+        h.invested = invested;
+        h.date = pastDate(body.date ?? h.date, "Investment date");
+        h.distributions = body.distributions === "" || body.distributions == null ? 0 : money(body.distributions, "Distributions");
         await putOne(KINDS.deal, d);
-        if (h) await putOne(KINDS.holding, h);
-        return json({ deal: d, holding: h ?? null });
+        await putOne(KINDS.holding, h);
+        return json({ deal: d, holding: h });
       }
       if (!action && method === "DELETE") {
         for (const h of await ownHoldings()) await deleteOne(KINDS.holding, h.id);
@@ -262,12 +266,9 @@ export default async (req: Request) => {
         headers: { "content-type": "application/json", "cache-control": "no-store", "content-disposition": `attachment; filename="pari-passu-backup-${stamp}.json"` },
       });
     }
-    if (method !== "GET" && !(req.headers.get("content-type") || "").includes("application/json")) return fail("Expected JSON", 415);
+    if (notJson()) return fail("Expected JSON", 415);
     let body: any = {};
-    if (method === "POST" || method === "PUT") {
-      body = await req.json().catch(() => bad("Invalid JSON"));
-      if (!body || typeof body !== "object" || Array.isArray(body)) bad("Invalid JSON"); // JSON "null", numbers etc. parse fine but are not a request
-    }
+    if (method === "POST" || method === "PUT") body = await readBody();
 
     if (resource === "people") {
       // Personal sign-in passcode for one person (admin sets or removes it; it is stored hashed and never shown again).
@@ -308,9 +309,12 @@ export default async (req: Request) => {
         return json(p);
       }
       if (method === "DELETE" && id) {
-        const holdings = await listAll<Holding>(KINDS.holding);
-        const n = holdings.filter((h) => h.personId === id).length;
-        if (n) return fail(`This person still has ${n} holding${n === 1 ? "" : "s"}. Delete or reassign them first.`, 409);
+        const [holdings, allDeals] = await Promise.all([listAll<Holding>(KINDS.holding), listAll<Deal>(KINDS.deal)]);
+        const ownIds = new Set(allDeals.filter((d) => d.ownerId).map((d) => d.id));
+        const theirs = holdings.filter((h) => h.personId === id);
+        const own = theirs.filter((h) => ownIds.has(h.dealId)).length;
+        const n = theirs.length;
+        if (n) return fail(`This person still has ${n} holding${n === 1 ? "" : "s"}. Delete or reassign them first.${own ? ` ${own} of them ${own === 1 ? "is" : "are"} in their own private deals, which you delete under Manage > Members' own deals.` : ""}`, 409);
         await deleteOne(KINDS.person, id);
         await deleteAuth(id);
         return json({ ok: true });
