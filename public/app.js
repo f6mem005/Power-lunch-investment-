@@ -703,7 +703,7 @@
   const paintTheme = () => {
     const dark = isDark(), btn = $("#themeBtn");
     btn.textContent = dark ? "☀\uFE0E Regular mode" : "☾\uFE0E Dark mode";   // \uFE0E keeps the symbols plain text, not colour emoji
-    btn.setAttribute("aria-label", dark ? "Switch to regular (light) mode" : "Switch to dark mode");
+    btn.setAttribute("aria-label", dark ? "Switch to Regular mode" : "Switch to Dark mode");   // contains the visible words, for voice control
   };
   $("#themeBtn").onclick = () => {
     document.documentElement.dataset.theme = isDark() ? "light" : "dark";
