@@ -698,12 +698,12 @@
     }
   });
   $("#logoutBtn").onclick = async () => { await api("/api/logout", { method: "POST", body: {} }).catch(() => {}); Object.assign(state, { role: null, me: null, previewOf: null }); showLogin(); };
-  // One toggle that says what it will do: "Dark mode" while the page is regular, "Regular mode" while it is dark.
+  // One toggle that says what it will do: "Dark mode" while the page is light, "Light mode" while it is dark.
   const isDark = () => document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
   const paintTheme = () => {
     const dark = isDark(), btn = $("#themeBtn");
-    btn.textContent = dark ? "☀\uFE0E Regular mode" : "☾\uFE0E Dark mode";   // \uFE0E keeps the symbols plain text, not colour emoji
-    btn.setAttribute("aria-label", dark ? "Switch to Regular mode" : "Switch to Dark mode");   // contains the visible words, for voice control
+    btn.textContent = dark ? "☀\uFE0E Light mode" : "☾\uFE0E Dark mode";   // \uFE0E keeps the symbols plain text, not colour emoji
+    btn.setAttribute("aria-label", dark ? "Switch to Light mode" : "Switch to Dark mode");   // contains the visible words, for voice control
   };
   $("#themeBtn").onclick = () => {
     document.documentElement.dataset.theme = isDark() ? "light" : "dark";
