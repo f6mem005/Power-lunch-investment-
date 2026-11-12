@@ -381,9 +381,17 @@
   // ---------- Club: Year-end totals, K-1s and Accounts (club members and the admin) ----------
   const clubHoldings = () => state.holdings.filter((h) => dealById(h.dealId)?.channel === "club");
   const lineSum = (r, type) => r2(r.lines.filter((l) => l.type === type).reduce((s, l) => s + l.amount, 0));
-  const isClubAdmin = () => state.role === "admin";
+  const isClubAdmin = () => state.role === "admin" && !state.previewOf;
   const lastYear = () => new Date().getFullYear() - 1;
 
+  // Shares an amount across weights to the cent so the pieces add up to the amount exactly (largest remainder; works for losses too).
+  function splitCents(amount, weights) {
+    const total = weights.reduce((s, w) => s + w, 0), cents = Math.round(amount * 100);
+    const raw = weights.map((w) => (cents * w) / total), base = raw.map((v) => Math.trunc(v));
+    const rest = cents - base.reduce((s, v) => s + v, 0), order = raw.map((v, i) => ({ i, frac: Math.abs(v - base[i]) })).sort((a, b) => b.frac - a.frac || a.i - b.i);
+    for (let k = 0; k < Math.abs(rest); k++) base[order[k % order.length].i] += rest > 0 ? 1 : -1;
+    return base.map((c) => c / 100);
+  }
   // Each K-1 belongs to the club. It is split across the deal's holders by their share of the money in that deal at 12/31 of the K-1's
   // year (an estimate: the real split follows the partnership agreement, so confirm with your accountant). Nothing per member is stored.
   function k1Data() {
@@ -396,15 +404,15 @@
       if (!total) { unsplit.push(r); continue; }
       const byPerson = new Map();
       for (const h of held) byPerson.set(h.personId, (byPerson.get(h.personId) || 0) + h.invested);
-      const year = perYear.get(r.year) || new Map(), I = lineSum(r, "income"), E = lineSum(r, "expense");
-      for (const [pid, inv] of byPerson) {
+      const year = perYear.get(r.year) || new Map(), ids = [...byPerson.keys()].sort(), weights = ids.map((pid) => byPerson.get(pid));
+      const inc = splitCents(lineSum(r, "income"), weights), exp = splitCents(lineSum(r, "expense"), weights);
+      ids.forEach((pid, i) => {
         const a = year.get(pid) || { income: 0, expenses: 0 };
-        a.income += (I * inv) / total; a.expenses += (E * inv) / total;
+        a.income = r2(a.income + inc[i]); a.expenses = r2(a.expenses + exp[i]);
         year.set(pid, a);
-      }
+      });
       perYear.set(r.year, year);
     }
-    for (const year of perYear.values()) for (const a of year.values()) { a.income = r2(a.income); a.expenses = r2(a.expenses); }
     return { perYear, unsplit };
   }
 
@@ -514,7 +522,7 @@
       `<h2>${r ? "Edit K-1 figures" : "Add K-1 figures"}</h2>
       <div class="form-grid">
         <div><label for="k-deal">Deal</label><select id="k-deal" name="dealId">${options(clubDeals, r?.dealId)}</select></div>
-        <div><label for="k-year">Tax year</label><input id="k-year" name="year" type="number" min="1990" max="${lastYear() + 2}" step="1" value="${r?.year ?? lastYear()}" required></div>
+        <div><label for="k-year">Tax year</label><input id="k-year" name="year" type="number" min="1990" max="${lastYear() + 1}" step="1" value="${r?.year ?? lastYear()}" required></div>
       </div>
       <p class="muted" style="margin:10px 0 4px">Income and expense lines from the K-1. Enter a loss as negative income. Blank lines are ignored.</p>
       <div id="k1rows">${lines.map(row).join("")}</div>
@@ -538,7 +546,7 @@
       `<h2>${r ? "Edit year-end value" : "Add a year-end value"}</h2>
       <div class="form-grid">
         <div><label for="v-deal">Deal</label><select id="v-deal" name="dealId">${options(clubDeals, r?.dealId)}</select></div>
-        <div><label for="v-year">At 12/31 of</label><input id="v-year" name="year" type="number" min="1990" max="${lastYear() + 2}" step="1" value="${r?.year ?? lastYear()}" required></div>
+        <div><label for="v-year">At 12/31 of</label><input id="v-year" name="year" type="number" min="1990" max="${lastYear() + 1}" step="1" value="${r?.year ?? lastYear()}" required></div>
         <div><label for="v-val">Account value ($)</label><input id="v-val" name="value" type="number" min="0" step="0.01" inputmode="decimal" value="${r ? esc(String(r.value)) : ""}" required></div>
       </div>
       <label for="v-note">Source or note (optional)</label><input id="v-note" name="note" maxlength="500" value="${esc(r?.note || "")}" placeholder="e.g. Q4 statement">`,
@@ -620,11 +628,11 @@
   async function deleteDeal(id) {
     const d = dealById(id);
     const hs = state.holdings.filter((h) => h.dealId === id);
-    const msg = hs.length
-      ? `Delete "${d.name}" AND its ${hs.length} holding${hs.length === 1 ? "" : "s"} (${money(hs.reduce((s, h) => s + h.invested, 0))} invested)? This can't be undone.`
-      : `Delete "${d.name}"? This can't be undone.`;
+    const recs = state.k1.filter((r) => r.dealId === id).length + state.accountValues.filter((r) => r.dealId === id).length;
+    const also = [hs.length ? `its ${hs.length} holding${hs.length === 1 ? "" : "s"} (${money(hs.reduce((s, h) => s + h.invested, 0))} invested)` : "", recs ? `its ${recs} K-1 and year-end value record${recs === 1 ? "" : "s"}` : ""].filter(Boolean).join(" AND ");
+    const msg = also ? `Delete "${d.name}" AND ${also}? This can't be undone.` : `Delete "${d.name}"? This can't be undone.`;
     if (!confirm(msg)) return false;
-    await api(`/api/deals/${id}${hs.length ? "?cascade=1" : ""}`, { method: "DELETE" });
+    await api(`/api/deals/${id}${hs.length || recs ? "?cascade=1" : ""}`, { method: "DELETE" });
     return true;
   }
   // Easy to say and remember: 3 consonant+vowel syllables and 2 digits, 8 characters, e.g. "rakobu47".

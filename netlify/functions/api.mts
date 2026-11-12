@@ -196,8 +196,8 @@ export default async (req: Request) => {
   if (resource === "logout" && method === "POST") return json({ ok: true }, 200, { "set-cookie": clearCookie() });
   if (!session) return fail("Please sign in", 401);
 
-  const loadView = async (viewer: Viewer) => {
-    const wantsClub = viewer.kind === "admin" || viewer.person.type === "member";   // non-members never receive the club's K-1s or account values
+  const loadView = async (viewer: Viewer, withClubRecords = true) => {
+    const wantsClub = withClubRecords && (viewer.kind === "admin" || viewer.person.type === "member");   // non-members never receive the club's K-1s or account values
     const [people, deals, holdings, k1s, acct] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), wantsClub ? listAll<K1Record>(KINDS.k1) : Promise.resolve([] as K1Record[]), wantsClub ? listAll<AccountValue>(KINDS.acct) : Promise.resolve([] as AccountValue[])]);
     // Prices only for deals this viewer can receive: the shared ones, their own, or (admin) all.
     const mayHave = (d: Deal) => !d.ownerId || viewer.kind === "admin" || d.ownerId === viewer.person.id;
@@ -228,7 +228,7 @@ export default async (req: Request) => {
     }
 
     if (resource === "prices" && method === "GET") {
-      const view = await loadView(await viewerFor()); // only tickers this person is allowed to see
+      const view = await loadView(await viewerFor(), false); // only tickers this person is allowed to see
       const tickers = [...view.deals, ...view.ownDeals].map((d) => d.ticker).filter(Boolean) as string[];
       return json(await getQuotes(tickers));
     }
@@ -448,7 +448,7 @@ export default async (req: Request) => {
         const newName = str(body.name ?? d.name, "Name");
         if (!sameName(newName, d.name)) await assertUniqueDealName(newName, d.id); // only when the name is actually being changed
         d.name = newName;
-        const nextChannel = body.channel === "individual" ? "individual" : "club";
+        const nextChannel = body.channel === undefined ? d.channel : body.channel === "individual" ? "individual" : "club";   // not sent = unchanged
         if (d.channel === "club" && nextChannel !== "club") {
           const hasClubRecords = (await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === d.id) || (await listAll<AccountValue>(KINDS.acct)).some((r) => r.dealId === d.id);
           if (hasClubRecords) bad("This deal has K-1s or year-end account values recorded under the Club tab. Delete those first, or keep it a club deal.");
@@ -461,7 +461,8 @@ export default async (req: Request) => {
       if (method === "DELETE" && id) {
         if ((await getOne<Deal>(KINDS.deal, id))?.ownerId) bad(OWN_DEAL_HINT);
         const mine = (await listAll<Holding>(KINDS.holding)).filter((h) => h.dealId === id);
-        if (mine.length && url.searchParams.get("cascade") !== "1") return fail("This deal still has holdings. Confirm deleting them too.", 409);
+        const clubRecords = (await listAll<K1Record>(KINDS.k1)).filter((r) => r.dealId === id).length + (await listAll<AccountValue>(KINDS.acct)).filter((r) => r.dealId === id).length;
+        if ((mine.length || clubRecords) && url.searchParams.get("cascade") !== "1") return fail(`This deal still has ${[mine.length ? `${mine.length} holding${mine.length === 1 ? "" : "s"}` : "", clubRecords ? `${clubRecords} K-1 or year-end value record${clubRecords === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ")}. Confirm deleting them too.`, 409);
         for (const h of mine) await deleteOne(KINDS.holding, h.id);
         for (const r of await listAll<K1Record>(KINDS.k1)) if (r.dealId === id) await deleteOne(KINDS.k1, r.id);
         for (const r of await listAll<AccountValue>(KINDS.acct)) if (r.dealId === id) await deleteOne(KINDS.acct, r.id);
