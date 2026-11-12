@@ -8,11 +8,11 @@
 // only, nothing revealing others' amounts) can no longer be reached by this rule; it is kept as a safety net so a
 // future, stricter rule cannot leak by accident.
 import type { Quote } from "./prices.mts";
-import type { AccountValue, Deal, Holding, K1Record, Person } from "./store.mts";
+import type { Deal, Holding, K1Record, Person } from "./store.mts";
 
 export type Viewer = { kind: "admin" } | { kind: "person"; person: Person };
 
-export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], allHoldings: Holding[], quotes: Record<string, Quote>, allK1: K1Record[] = [], allAcct: AccountValue[] = []) {
+export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], allHoldings: Holding[], quotes: Record<string, Quote>, allK1: K1Record[] = []) {
   const isAdmin = viewer.kind === "admin";
   const me = viewer.kind === "person" ? viewer.person : null;
 
@@ -82,12 +82,11 @@ export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], al
   const allDealById = new Map(allDeals.map((d) => [d.id, d]));
   const ownHoldings = allHoldings.filter((h) => ownIds.has(h.dealId)).map((h) => rowOf(h, allDealById.get(h.dealId)!, true));
 
-  // The club's K-1s and deal account values are club records: the admin and club members get them, for Power Lunch Club deals
+  // The club's K-1s are club records: the admin and club members get them, for Power Lunch Club deals
   // only (never a private deal), and nobody else does, whatever stake they hold.
   const seesClubRecords = isAdmin || me?.type === "member";
   const clubDealIds = new Set(deals.filter((d) => d.channel === "club").map((d) => d.id));
   const k1 = seesClubRecords ? allK1.filter((r) => clubDealIds.has(r.dealId)) : [];
-  const accountValues = seesClubRecords ? allAcct.filter((r) => clubDealIds.has(r.dealId)) : [];
 
   const peopleIds = new Set(rows.map((r) => r.personId));
   if (me) {
@@ -112,7 +111,6 @@ export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], al
     ownDeals,
     ownHoldings,
     k1,
-    accountValues,
     quotes: visibleQuotes,
   };
 }

@@ -51,7 +51,7 @@
 
   const state = {
     scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
-    role: null, me: null, previewOf: null, passcodes: {}, k1: [], accountValues: [], clubSection: "yearend", ownDeals: [], ownHoldings: [], priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
+    role: null, me: null, previewOf: null, passcodes: {}, k1: [], clubSection: "yearend", ownDeals: [], ownHoldings: [], priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
   };
 
   async function api(path, opts = {}) {
@@ -388,7 +388,7 @@
       <div class="card"><h2>All holdings</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Person</th><th>Date</th><th class="num">Invested</th><th class="num">Distributions</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }
 
-  // ---------- Club: Year-end totals and capital accounts, K-1s and Deal values (club members and the admin) ----------
+  // ---------- Club: Year-end totals and capital accounts and K-1s (club members and the admin) ----------
   const clubHoldings = () => state.holdings.filter((h) => dealById(h.dealId)?.channel === "club");
   const lineSum = (r, type) => r2(r.lines.filter((l) => l.type === type).reduce((s, l) => s + l.amount, 0));
   const isClubAdmin = () => state.role === "admin" && !state.previewOf;
@@ -483,34 +483,11 @@
     return out;
   }
 
-  function dealValuesView() {
-    const admin = isClubAdmin();
-    const years = [...new Set(state.accountValues.map((v) => v.year))].sort((a, b) => b - a);
-    const dealIds = [...new Set(state.accountValues.map((v) => v.dealId))];
-    const names = (id) => dealById(id)?.name || "Deal";
-    const valuesTable = !years.length
-      ? `<p class="muted" style="margin:0">No year-end account values entered yet.${admin ? " Press Add a year-end value to record what a deal's statement shows at 12/31." : ""}</p>`
-      : `<div class="table-wrap"><table><thead><tr><th>Deal</th>${years.map((y) => `<th class="num">12/31/${y}</th>`).join("")}</tr></thead><tbody>${dealIds
-          .slice().sort((a, b) => names(a).localeCompare(names(b)))
-          .map((id) => `<tr><td>${esc(names(id))}</td>${years.map((y) => {
-            const v = state.accountValues.find((x) => x.dealId === id && x.year === y);
-            if (!v) return '<td class="num muted">—</td>';
-            const prev = state.accountValues.filter((x) => x.dealId === id && x.year < y).sort((a, b) => b.year - a.year)[0];
-            const delta = prev ? v.value - prev.value : null;
-            const change = prev ? `<div class="${cls(delta)}" style="font-size:12px">${delta >= 0 ? "+" : "−"}${usd0.format(Math.abs(delta))}${prev.value ? ` (${delta >= 0 ? "+" : "−"}${(Math.abs(delta / prev.value) * 100).toFixed(1)}%)` : ""} vs ${prev.year}</div>` : "";
-            const val = admin ? `<button class="btn small ghost" type="button" data-edit-acct="${esc(v.id)}" title="${esc(v.note || "Edit")}">${usd0.format(v.value)}</button>` : `<span title="${esc(v.note || "")}">${usd0.format(v.value)}</span>`;
-            return `<td class="num">${val}${change}</td>`;
-          }).join("")}</tr>`).join("")}</tbody></table></div>`;
-    return `<div class="stack">
-      <div class="section-head"><h2>Deal values</h2>${admin ? '<button class="btn primary" type="button" data-add-acct>Add a year-end value</button>' : ""}</div>
-      <div class="card"><h3>Deal account values at year-end</h3><p class="muted" style="margin:4px 0 10px">What each club deal's statement shows at 12/31, with the change from the previous year recorded. Member balances are under Year-end.</p>${valuesTable}</div></div>`;
-  }
-
   function club() {
-    const sec = ["yearend", "k1", "dealvalues"].includes(state.clubSection) ? state.clubSection : "yearend";
-    const tabs = [["yearend", "Year-end"], ["k1", "K-1"], ["dealvalues", "Deal values"]];
+    const sec = ["yearend", "k1"].includes(state.clubSection) ? state.clubSection : "yearend";
+    const tabs = [["yearend", "Year-end"], ["k1", "K-1"]];
     const nav = `<div class="clubnav" role="radiogroup" aria-label="Club records">${tabs.map(([k, label]) => `<button type="button" role="radio" aria-checked="${sec === k}" data-club-sec="${k}">${label}</button>`).join("")}</div>`;
-    return `<div class="stack">${nav}${sec === "k1" ? k1View() : sec === "dealvalues" ? dealValuesView() : yearend()}</div>`;
+    return `<div class="stack">${nav}${sec === "k1" ? k1View() : yearend()}</div>`;
   }
 
   // The K-1 entry window: a deal, a year, and any number of income / expense lines (a loss is a negative income line).
@@ -539,23 +516,6 @@
       r ? { label: "Delete K-1", run: async () => { if (!confirm("Delete this K-1? This can't be undone.")) return false; await api(`/api/k1/${id}`, { method: "DELETE" }); return true; } } : undefined,
     );
     $("#k1more", dlg).onclick = () => { $("#k1rows", dlg).insertAdjacentHTML("beforeend", row({ type: "income", label: "", amount: "" })); };
-  }
-
-  function editAcct(id) {
-    const r = id ? state.accountValues.find((x) => x.id === id) : null;
-    const clubDeals = state.deals.filter((d) => d.channel === "club");
-    if (!clubDeals.length) { alert("Add a Power Lunch Club deal first."); return; }
-    openDialog(
-      `<h2>${r ? "Edit year-end value" : "Add a year-end value"}</h2>
-      <div class="form-grid">
-        <div><label for="v-deal">Deal</label><select id="v-deal" name="dealId">${options(clubDeals, r?.dealId)}</select></div>
-        <div><label for="v-year">At 12/31 of</label><input id="v-year" name="year" type="number" min="1990" max="${lastYear() + 1}" step="1" value="${r?.year ?? lastYear()}" required></div>
-        <div><label for="v-val">Account value ($)</label><input id="v-val" name="value" type="number" min="0" step="0.01" inputmode="decimal" value="${r ? esc(String(r.value)) : ""}" required></div>
-      </div>
-      <label for="v-note">Source or note (optional)</label><input id="v-note" name="note" maxlength="500" value="${esc(r?.note || "")}" placeholder="e.g. Q4 statement">`,
-      (f) => api(r ? `/api/accountvalues/${id}` : "/api/accountvalues", { method: r ? "PUT" : "POST", body: { dealId: f.dealId, year: f.year, value: f.value, note: f.note } }),
-      r ? { label: "Delete value", run: async () => { if (!confirm("Delete this value? This can't be undone.")) return false; await api(`/api/accountvalues/${id}`, { method: "DELETE" }); return true; } } : undefined,
-    );
   }
 
   // ---------- My deals: deals a person adds for themselves; private to them and the admin ----------
@@ -631,8 +591,8 @@
   async function deleteDeal(id) {
     const d = dealById(id);
     const hs = state.holdings.filter((h) => h.dealId === id);
-    const recs = state.k1.filter((r) => r.dealId === id).length + state.accountValues.filter((r) => r.dealId === id).length;
-    const also = [hs.length ? `its ${hs.length} holding${hs.length === 1 ? "" : "s"} (${money(hs.reduce((s, h) => s + h.invested, 0))} invested)` : "", recs ? `its ${recs} K-1 and year-end value record${recs === 1 ? "" : "s"}` : ""].filter(Boolean).join(" AND ");
+    const recs = state.k1.filter((r) => r.dealId === id).length;
+    const also = [hs.length ? `its ${hs.length} holding${hs.length === 1 ? "" : "s"} (${money(hs.reduce((s, h) => s + h.invested, 0))} invested)` : "", recs ? `its ${recs} K-1 record${recs === 1 ? "" : "s"}` : ""].filter(Boolean).join(" AND ");
     const msg = also ? `Delete "${d.name}" AND ${also}? This can't be undone.` : `Delete "${d.name}"? This can't be undone.`;
     if (!confirm(msg)) return false;
     await api(`/api/deals/${id}${hs.length || recs ? "?cascade=1" : ""}`, { method: "DELETE" });
@@ -894,7 +854,7 @@
 
   async function refresh(afterPrices = false, soft = false) {
     const data = await api(`/api/data${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`);
-    Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, ownDeals: data.ownDeals || [], ownHoldings: data.ownHoldings || [], k1: data.k1 || [], accountValues: data.accountValues || [], quotes: data.quotes || {} });
+    Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, ownDeals: data.ownDeals || [], ownHoldings: data.ownHoldings || [], k1: data.k1 || [], quotes: data.quotes || {} });
     if (data.role === "admin") Object.assign(state, { adminPeople: data.people, passcodes: data.passcodes || {} });
     if (!state.scope || !allowedScopes()[state.scope]) state.scope = Object.keys(allowedScopes())[0];
     derive();
@@ -1013,8 +973,6 @@
     if (t.dataset.clubSec) { state.clubSection = t.dataset.clubSec; render(); }
     if (t.hasAttribute("data-add-k1")) editK1(null);
     if (t.dataset.editK1) editK1(t.dataset.editK1);
-    if (t.hasAttribute("data-add-acct")) editAcct(null);
-    if (t.dataset.editAcct) editAcct(t.dataset.editAcct);
     if (t.dataset.editOwn) editDeal(t.dataset.editOwn, true);
     if (t.hasAttribute("data-add-own")) addOwnDeal();
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);

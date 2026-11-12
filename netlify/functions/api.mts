@@ -138,7 +138,7 @@ const loggedTotal = (h: Holding) => round2((h.distLog ?? []).reduce((s, e) => s 
 const MAX_DIST_ENTRIES = 200;
 const usdText = (n: number) => "$" + n.toFixed(2);
 
-// ---- the club's K-1s and deal account values (admin enters them; club members read them)
+// ---- the club's K-1s (admin enters them; club members read them)
 const taxYear = (v: unknown) => {
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1990 || n > Number(today().slice(0, 4))) bad("Year must be a four-digit tax year, not in the future");
@@ -197,12 +197,12 @@ export default async (req: Request) => {
   if (!session) return fail("Please sign in", 401);
 
   const loadView = async (viewer: Viewer, withClubRecords = true) => {
-    const wantsClub = withClubRecords && (viewer.kind === "admin" || viewer.person.type === "member");   // non-members never receive the club's K-1s or account values
-    const [people, deals, holdings, k1s, acct] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), wantsClub ? listAll<K1Record>(KINDS.k1) : Promise.resolve([] as K1Record[]), wantsClub ? listAll<AccountValue>(KINDS.acct) : Promise.resolve([] as AccountValue[])]);
+    const wantsClub = withClubRecords && (viewer.kind === "admin" || viewer.person.type === "member");   // non-members never receive the club's K-1s
+    const [people, deals, holdings, k1s] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), wantsClub ? listAll<K1Record>(KINDS.k1) : Promise.resolve([] as K1Record[])]);
     // Prices only for deals this viewer can receive: the shared ones, their own, or (admin) all.
     const mayHave = (d: Deal) => !d.ownerId || viewer.kind === "admin" || d.ownerId === viewer.person.id;
     const quotes = await cachedQuotes(deals.filter(mayHave).map((d) => d.ticker).filter(Boolean) as string[]);
-    return buildView(viewer, people, deals, holdings, quotes, k1s, acct);
+    return buildView(viewer, people, deals, holdings, quotes, k1s);
   };
   // The admin can preview exactly what a given person sees (?as=<personId>).
   const viewerFor = async (): Promise<Viewer> => {
@@ -345,36 +345,6 @@ export default async (req: Request) => {
       }
     }
 
-    // A club deal's account value at a year-end, from its statement: one per deal per year.
-    if (resource === "accountvalues") {
-      if (method === "POST" && !id) {
-        const deal = await clubDeal(body.dealId);
-        const year = taxYear(body.year);
-        const rec: AccountValue = { id: `val-${deal.id}-${year}`, dealId: deal.id, year, value: money(body.value, "Account value"), note: optStr(body.note) };
-        if (await getOne<AccountValue>(KINDS.acct, rec.id)) bad("A value for that deal and year already exists. Edit it instead.");
-        await putOne(KINDS.acct, rec);
-        return json(rec, 201);
-      }
-      if (method === "PUT" && id) {
-        const rec = await getOne<AccountValue>(KINDS.acct, id);
-        if (!rec) return fail("Not found", 404);
-        const deal = await clubDeal(body.dealId ?? rec.dealId);
-        const year = taxYear(body.year ?? rec.year);
-        const moved = `val-${deal.id}-${year}`;
-        if (moved !== rec.id && (await getOne<AccountValue>(KINDS.acct, moved))) bad("A value for that deal and year already exists.");
-        const old = rec.id;
-        rec.id = moved; rec.dealId = deal.id; rec.year = year; rec.value = money(body.value, "Account value"); if (body.note !== undefined) rec.note = optStr(body.note);
-        await putOne(KINDS.acct, rec);
-        if (old !== moved) await deleteOne(KINDS.acct, old);
-        return json(rec);
-      }
-      if (method === "DELETE" && id) {
-        if (!(await getOne<AccountValue>(KINDS.acct, id))) return fail("Not found", 404);
-        await deleteOne(KINDS.acct, id);
-        return json({ ok: true });
-      }
-    }
-
     if (resource === "people") {
       // Personal sign-in passcode for one person (admin sets or removes it; it is stored hashed and never shown again).
       if (id && parts[2] === "passcode" && method === "PUT") {
@@ -450,8 +420,8 @@ export default async (req: Request) => {
         d.name = newName;
         const nextChannel = body.channel === undefined ? d.channel : body.channel === "individual" ? "individual" : "club";   // not sent = unchanged
         if (d.channel === "club" && nextChannel !== "club") {
-          const hasClubRecords = (await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === d.id) || (await listAll<AccountValue>(KINDS.acct)).some((r) => r.dealId === d.id);
-          if (hasClubRecords) bad("This deal has K-1s or year-end account values recorded under the Club tab. Delete those first, or keep it a club deal.");
+          const hasClubRecords = (await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === d.id);
+          if (hasClubRecords) bad("This deal has K-1s recorded under the Club tab. Delete those first, or keep it a club deal.");
         }
         d.channel = nextChannel;
         applyDealFields(d, body);
@@ -461,11 +431,11 @@ export default async (req: Request) => {
       if (method === "DELETE" && id) {
         if ((await getOne<Deal>(KINDS.deal, id))?.ownerId) bad(OWN_DEAL_HINT);
         const mine = (await listAll<Holding>(KINDS.holding)).filter((h) => h.dealId === id);
-        const clubRecords = (await listAll<K1Record>(KINDS.k1)).filter((r) => r.dealId === id).length + (await listAll<AccountValue>(KINDS.acct)).filter((r) => r.dealId === id).length;
-        if ((mine.length || clubRecords) && url.searchParams.get("cascade") !== "1") return fail(`This deal still has ${[mine.length ? `${mine.length} holding${mine.length === 1 ? "" : "s"}` : "", clubRecords ? `${clubRecords} K-1 or year-end value record${clubRecords === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ")}. Confirm deleting them too.`, 409);
+        const clubRecords = (await listAll<K1Record>(KINDS.k1)).filter((r) => r.dealId === id).length;
+        if ((mine.length || clubRecords) && url.searchParams.get("cascade") !== "1") return fail(`This deal still has ${[mine.length ? `${mine.length} holding${mine.length === 1 ? "" : "s"}` : "", clubRecords ? `${clubRecords} K-1 record${clubRecords === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ")}. Confirm deleting them too.`, 409);
         for (const h of mine) await deleteOne(KINDS.holding, h.id);
         for (const r of await listAll<K1Record>(KINDS.k1)) if (r.dealId === id) await deleteOne(KINDS.k1, r.id);
-        for (const r of await listAll<AccountValue>(KINDS.acct)) if (r.dealId === id) await deleteOne(KINDS.acct, r.id);
+        for (const r of await listAll<AccountValue>(KINDS.acct)) if (r.dealId === id) await deleteOne(KINDS.acct, r.id);   // year-end values entered before that section was removed
         await deleteOne(KINDS.deal, id);
         return json({ ok: true, holdingsDeleted: mine.length });
       }

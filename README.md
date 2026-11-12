@@ -36,7 +36,7 @@ Enforced on the server (the browser is only sent what the person may see):
 |---|---|
 | Admin | Everything, and can edit. "Preview as <person>" shows exactly what that person sees. |
 | Anyone | Every holder of any deal they hold a stake in, club or individual (you see who invested alongside you). Nothing from deals they aren't in. |
-| Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Club tab (Year-end totals and capital accounts, K-1s and deal values). |
+| Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Club tab (Year-end totals and capital accounts, and K-1s). |
 | Non-member | Only the deals they hold. No other club deals, no Club tab. |
 
 ### My deals (private deals a person adds for themselves)
@@ -107,7 +107,7 @@ Each holding keeps one running total of distributions (used for value, carry and
 
 ## The Club tab (club members and the admin only)
 
-Everything that applies only to the Power Lunch Club lives in one tab, **Club**, with three sections: **Year-end** (everything per member), **K-1** and **Deal values**.
+Everything that applies only to the Power Lunch Club lives in one tab, **Club**, with two sections: **Year-end** (everything per member) and **K-1**.
 Non-members never see the tab or any of its data (the server doesn't send it). The old `#yearend` link still opens it.
 
 ### K-1 income and expenses
@@ -117,9 +117,7 @@ The app splits it across the deal's holders by their share of the money in that 
 running total of that year plus all prior years. The split is an estimate (the real one follows the partnership agreement), and nothing per member
 is stored, so correcting a K-1 or an investment updates everything.
 
-### Deal values
-
-The admin records what a club deal's statement shows at 12/31; the **Deal values** section shows each year and the change from the previous year recorded.
+There is no longer a Deal values section. Year-end values entered while it existed are no longer shown or editable; they stay in the store, appear in the backup export under `accountValues`, and are deleted with their deal.
 
 ### Member capital accounts (in Year-end)
 
