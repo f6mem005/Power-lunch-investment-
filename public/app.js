@@ -252,7 +252,7 @@
     if (!club.length) return [];
     const thisYear = new Date().getFullYear();
     const first = Math.min(...club.map((h) => Number(h.date.slice(0, 4))));
-    const last = Math.max(thisYear, ...club.map((h) => Number(h.date.slice(0, 4))));
+    const last = Math.max(thisYear, ...club.map((h) => Number(h.date.slice(0, 4))), ...club.flatMap((h) => (h.distLog || []).map((e) => Number(e.date.slice(0, 4)))));
     const sum = (list) => list.reduce((s, h) => s + h.invested, 0);
     // Distributions: the dated entries add up by year. The part of a holding's total that has no date (received before dates were
     // tracked) can't be placed in a year, so it is counted only in the "to date" figure of the current year, and reported separately.
@@ -448,9 +448,10 @@
       const k = perYear.get(Y.y) || new Map();
       const rowFor = (r) => {
         const a = k.get(r.p.id), start = ends.get(r.p.id) || 0, k1 = r2((a?.income || 0) - (a?.expenses || 0));
-        const end = r2(start + r.during + k1 - r.distDuring);
+        const dist = r2(r.distDuring + (Y.current ? r.undated : 0));   // this year's figure also takes the distributions that have no date, so it matches Year-end's to-date total
+        const end = r2(start + r.during + k1 - dist);
         ends.set(r.p.id, end);
-        return { p: r.p, start, contrib: r.during, k1, dist: r.distDuring, end };
+        return { p: r.p, start, contrib: r.during, k1, dist, end };
       };
       const members = Y.members.map(rowFor), others = Y.others.map(rowFor);
       const tot = (key) => r2(members.reduce((s, r) => s + r[key], 0));
@@ -490,7 +491,7 @@
       <div class="section-head"><h2>Account values</h2>${admin ? '<button class="btn primary" type="button" data-add-acct>Add a year-end value</button>' : ""}</div>
       <div class="card"><h3>Deal account values at year-end</h3><p class="muted" style="margin:4px 0 10px">What each club deal's statement shows at 12/31, with the change from the previous year recorded.</p>${valuesTable}</div>
       <h3 style="margin:8px 0 0">Member capital accounts</h3>
-      <p class="muted" style="margin:-4px 0 0">Start of year, plus money put in during the year (including any upfront fee), plus K-1 net income (the K-1s split as described under K-1), minus the distributions received during the year, equals the end of the year. It's built from what is entered here, so it is an estimate to compare with your K-1s and statements.${undated ? ` ${usd2.format(undated)} of distributions have no date yet and are left out.` : ""}</p>
+      <p class="muted" style="margin:-4px 0 0">Start of year, plus money put in during the year (including any upfront fee), plus K-1 net income (the K-1s split as described under K-1), minus the distributions received during the year, equals the end of the year. It's built from what is entered here, so it is an estimate to compare with your K-1s and statements.${undated ? ` The current year's distributions include ${usd2.format(undated)} received before dates were tracked, so the balance now matches Year-end's to-date figure.` : ""}</p>
       ${cap.length ? capCards : '<div class="card"><p class="muted" style="margin:0">No Power Lunch Club investments yet.</p></div>'}</div>`;
   }
 
@@ -602,12 +603,16 @@
     };
     $("#dlgForm", dlg).onsubmit = async (e) => {
       e.preventDefault();
+      const save = $("button[type=submit]", e.target);
+      if (save.disabled) return;   // a second tap while the first is still being saved
+      save.disabled = true;
       try {
         await onSubmit(Object.fromEntries(new FormData(e.target)));
         dlg.close();
         await refresh();
       } catch (err) {
         $("[data-err]", dlg).textContent = err.message;
+        save.disabled = false;
       }
     };
     dlg.showModal();

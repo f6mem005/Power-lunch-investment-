@@ -141,7 +141,7 @@ const usdText = (n: number) => "$" + n.toFixed(2);
 // ---- the club's K-1s and deal account values (admin enters them; club members read them)
 const taxYear = (v: unknown) => {
   const n = Number(v);
-  if (!Number.isInteger(n) || n < 1990 || n > Number(today().slice(0, 4)) + 1) bad("Year must be a four-digit tax year");
+  if (!Number.isInteger(n) || n < 1990 || n > Number(today().slice(0, 4))) bad("Year must be a four-digit tax year, not in the future");
   return n;
 };
 const signedMoney = (v: unknown, name: string) => {
@@ -197,7 +197,8 @@ export default async (req: Request) => {
   if (!session) return fail("Please sign in", 401);
 
   const loadView = async (viewer: Viewer) => {
-    const [people, deals, holdings, k1s, acct] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), listAll<K1Record>(KINDS.k1), listAll<AccountValue>(KINDS.acct)]);
+    const wantsClub = viewer.kind === "admin" || viewer.person.type === "member";   // non-members never receive the club's K-1s or account values
+    const [people, deals, holdings, k1s, acct] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), wantsClub ? listAll<K1Record>(KINDS.k1) : Promise.resolve([] as K1Record[]), wantsClub ? listAll<AccountValue>(KINDS.acct) : Promise.resolve([] as AccountValue[])]);
     // Prices only for deals this viewer can receive: the shared ones, their own, or (admin) all.
     const mayHave = (d: Deal) => !d.ownerId || viewer.kind === "admin" || d.ownerId === viewer.person.id;
     const quotes = await cachedQuotes(deals.filter(mayHave).map((d) => d.ticker).filter(Boolean) as string[]);
@@ -319,8 +320,8 @@ export default async (req: Request) => {
       if (method === "POST" && !id) {
         const deal = await clubDeal(body.dealId);
         const year = taxYear(body.year);
-        if ((await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === deal.id && r.year === year)) bad("A K-1 for that deal and year already exists. Edit it instead.");
-        const rec: K1Record = { id: newId(`k1-${deal.name}-${year}`), dealId: deal.id, year, lines: k1Lines(body.lines), note: optStr(body.note) };
+        const rec: K1Record = { id: `k1-${deal.id}-${year}`, dealId: deal.id, year, lines: k1Lines(body.lines), note: optStr(body.note) };   // the id is the deal and year, so there can only ever be one
+        if (await getOne<K1Record>(KINDS.k1, rec.id)) bad("A K-1 for that deal and year already exists. Edit it instead.");
         await putOne(KINDS.k1, rec);
         return json(rec, 201);
       }
@@ -329,9 +330,12 @@ export default async (req: Request) => {
         if (!rec) return fail("Not found", 404);
         const deal = await clubDeal(body.dealId ?? rec.dealId);
         const year = taxYear(body.year ?? rec.year);
-        if ((await listAll<K1Record>(KINDS.k1)).some((r) => r.id !== rec.id && r.dealId === deal.id && r.year === year)) bad("A K-1 for that deal and year already exists.");
-        rec.dealId = deal.id; rec.year = year; rec.lines = k1Lines(body.lines); rec.note = optStr(body.note);
+        const moved = `k1-${deal.id}-${year}`;
+        if (moved !== rec.id && (await getOne<K1Record>(KINDS.k1, moved))) bad("A K-1 for that deal and year already exists.");
+        const old = rec.id;
+        rec.id = moved; rec.dealId = deal.id; rec.year = year; rec.lines = k1Lines(body.lines); if (body.note !== undefined) rec.note = optStr(body.note);
         await putOne(KINDS.k1, rec);
+        if (old !== moved) await deleteOne(KINDS.k1, old);
         return json(rec);
       }
       if (method === "DELETE" && id) {
@@ -346,8 +350,8 @@ export default async (req: Request) => {
       if (method === "POST" && !id) {
         const deal = await clubDeal(body.dealId);
         const year = taxYear(body.year);
-        if ((await listAll<AccountValue>(KINDS.acct)).some((r) => r.dealId === deal.id && r.year === year)) bad("A value for that deal and year already exists. Edit it instead.");
-        const rec: AccountValue = { id: newId(`val-${deal.name}-${year}`), dealId: deal.id, year, value: money(body.value, "Account value"), note: optStr(body.note) };
+        const rec: AccountValue = { id: `val-${deal.id}-${year}`, dealId: deal.id, year, value: money(body.value, "Account value"), note: optStr(body.note) };
+        if (await getOne<AccountValue>(KINDS.acct, rec.id)) bad("A value for that deal and year already exists. Edit it instead.");
         await putOne(KINDS.acct, rec);
         return json(rec, 201);
       }
@@ -356,9 +360,12 @@ export default async (req: Request) => {
         if (!rec) return fail("Not found", 404);
         const deal = await clubDeal(body.dealId ?? rec.dealId);
         const year = taxYear(body.year ?? rec.year);
-        if ((await listAll<AccountValue>(KINDS.acct)).some((r) => r.id !== rec.id && r.dealId === deal.id && r.year === year)) bad("A value for that deal and year already exists.");
-        rec.dealId = deal.id; rec.year = year; rec.value = money(body.value, "Account value"); rec.note = optStr(body.note);
+        const moved = `val-${deal.id}-${year}`;
+        if (moved !== rec.id && (await getOne<AccountValue>(KINDS.acct, moved))) bad("A value for that deal and year already exists.");
+        const old = rec.id;
+        rec.id = moved; rec.dealId = deal.id; rec.year = year; rec.value = money(body.value, "Account value"); if (body.note !== undefined) rec.note = optStr(body.note);
         await putOne(KINDS.acct, rec);
+        if (old !== moved) await deleteOne(KINDS.acct, old);
         return json(rec);
       }
       if (method === "DELETE" && id) {
@@ -441,7 +448,12 @@ export default async (req: Request) => {
         const newName = str(body.name ?? d.name, "Name");
         if (!sameName(newName, d.name)) await assertUniqueDealName(newName, d.id); // only when the name is actually being changed
         d.name = newName;
-        d.channel = body.channel === "individual" ? "individual" : "club";
+        const nextChannel = body.channel === "individual" ? "individual" : "club";
+        if (d.channel === "club" && nextChannel !== "club") {
+          const hasClubRecords = (await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === d.id) || (await listAll<AccountValue>(KINDS.acct)).some((r) => r.dealId === d.id);
+          if (hasClubRecords) bad("This deal has K-1s or year-end account values recorded under the Club tab. Delete those first, or keep it a club deal.");
+        }
+        d.channel = nextChannel;
         applyDealFields(d, body);
         await putOne(KINDS.deal, d);
         return json(d);
