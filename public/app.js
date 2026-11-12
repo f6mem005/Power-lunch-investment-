@@ -7,6 +7,11 @@
   const pct = (n, d = 1) => (n == null || !Number.isFinite(n) ? "—" : `${(n * 100).toFixed(d)}%`);
   const signed = (n) => (n == null ? "—" : `${n >= 0 ? "+" : "−"}${usd0.format(Math.abs(n))}`);
   const dateFmt = (d) => (d ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—");
+  // Distribution amounts are kept to the cent. One place decides what is dated and what is not, so Year-end and the Edit holding
+  // window can't disagree, and sums never show float noise (0.30000000000000004) on screen or in the CSV.
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const datedSum = (h) => r2((h.distLog || []).reduce((s, e) => s + e.amount, 0));
+  const undatedOf = (h) => { const u = r2(h.distributions - datedSum(h)); return u > 0.004 ? u : 0; };
   const fmtShares = (n) => (n == null ? "—" : Number(n).toLocaleString("en-US", { maximumFractionDigits: 4 }));
   // Gain as a % of dollars invested. Gain = net value (after carry) + distributions - invested.
   const gainPct = (gain, invested) => (invested ? `${gain >= 0 ? "+" : "−"}${(Math.abs(gain / invested) * 100).toFixed(1)}%` : "—");
@@ -252,8 +257,8 @@
     // Distributions: the dated entries add up by year. The part of a holding's total that has no date (received before dates were
     // tracked) can't be placed in a year, so it is counted only in the "to date" figure of the current year, and reported separately.
     const logOf = (list) => list.flatMap((h) => h.distLog || []);
-    const undated = (list) => list.reduce((s, h) => s + Math.max(0, h.distributions - (h.distLog || []).reduce((t, e) => t + e.amount, 0)), 0);
-    const sumAmt = (list) => list.reduce((s, e) => s + e.amount, 0);
+    const undated = (list) => r2(list.reduce((s, h) => s + undatedOf(h), 0));
+    const sumAmt = (list) => r2(list.reduce((s, e) => s + e.amount, 0));
     const out = [];
     for (let y = last; y >= first; y--) {
       const end = `${y}-12-31`;
@@ -265,15 +270,15 @@
           return {
             p, during: sum(mine.filter((h) => h.date.startsWith(String(y)))), cum: sum(held),
             distDuring: sumAmt(dated.filter((e) => e.date.startsWith(String(y)))),
-            distCum: sumAmt(dated.filter((e) => e.date <= end)) + (isNow ? undated(held) : 0),   // to date includes the undated part
             undated: undated(held),
+            distCum: r2(sumAmt(dated.filter((e) => e.date <= end)) + (isNow ? undated(held) : 0)),   // to date includes the undated part
           };
         });
       const members = rows.filter((r) => r.p.type === "member");
       const others = rows.filter((r) => r.p.type !== "member" && (r.cum || r.during));
       const total = {
         during: members.reduce((s, r) => s + r.during, 0), cum: members.reduce((s, r) => s + r.cum, 0),
-        distDuring: members.reduce((s, r) => s + r.distDuring, 0), distCum: members.reduce((s, r) => s + r.distCum, 0), undated: members.reduce((s, r) => s + r.undated, 0),
+        distDuring: r2(members.reduce((s, r) => s + r.distDuring, 0)), distCum: r2(members.reduce((s, r) => s + r.distCum, 0)), undated: r2(members.reduce((s, r) => s + r.undated, 0)),
       };
       const deals = [...new Set(club.filter((h) => h.date.startsWith(String(y))).map((h) => h.dealId))].map((id) => dealById(id).name);
       out.push({ y, current: y === thisYear, members, others, total, deals });
@@ -287,13 +292,13 @@
       .map((Y) => {
         const label = Y.current ? `to date (${dateFmt(today())})` : `at 12/31/${Y.y}`;
         const body = Y.members
-          .map((r) => `<tr><td>${esc(r.p.name)}</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num">${Y.total.cum ? pct(r.cum / Y.total.cum, 2) : "—"}</td><td class="num">${r.distDuring ? money(r.distDuring) : "—"}</td><td class="num">${r.distCum ? money(r.distCum) : "—"}</td></tr>`)
+          .map((r) => `<tr><td>${esc(r.p.name)}</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num">${Y.total.cum ? pct(r.cum / Y.total.cum, 2) : "—"}</td><td class="num">${r.distDuring ? usd2.format(r.distDuring) : "—"}</td><td class="num">${r.distCum ? usd2.format(r.distCum) : "—"}</td></tr>`)
           .join("");
-        const others = Y.others.map((r) => `<tr class="muted"><td>${esc(r.p.name)} (non-member, not counted above)</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num"></td><td class="num">${r.distDuring ? money(r.distDuring) : "—"}</td><td class="num">${r.distCum ? money(r.distCum) : "—"}</td></tr>`).join("");
+        const others = Y.others.map((r) => `<tr class="muted"><td>${esc(r.p.name)} (non-member, not counted above)</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num"></td><td class="num">${r.distDuring ? usd2.format(r.distDuring) : "—"}</td><td class="num">${r.distCum ? usd2.format(r.distCum) : "—"}</td></tr>`).join("");
         return `<div class="card"><div class="person-head"><h3>${Y.y}${Y.current ? " (so far)" : ""}</h3><span class="muted">${Y.deals.length ? `Deals this year: ${esc(Y.deals.join(", "))}` : "No new deals this year"}</span></div>
           <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">Invested during ${Y.y}</th><th class="num">Total invested ${esc(label)}</th><th class="num">% of club</th><th class="num">Distributions during ${Y.y}</th><th class="num">Distributions ${Y.current ? "to date" : `through ${Y.y}`}</th></tr></thead>
-          <tbody>${body}${others}</tbody><tfoot><tr><td>Total, club members</td><td class="num">${money(Y.total.during)}</td><td class="num">${money(Y.total.cum)}</td><td class="num">100%</td><td class="num">${money(Y.total.distDuring)}</td><td class="num">${money(Y.total.distCum)}</td></tr></tfoot></table></div>
-          ${Y.total.undated ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions include ${money(Y.total.undated)} received before dates were tracked.` : `${money(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here.`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>` : ""}</div>`;
+          <tbody>${body}${others}</tbody><tfoot><tr><td>Total, club members</td><td class="num">${money(Y.total.during)}</td><td class="num">${money(Y.total.cum)}</td><td class="num">100%</td><td class="num">${usd2.format(Y.total.distDuring)}</td><td class="num">${usd2.format(Y.total.distCum)}</td></tr></tfoot></table></div>
+          ${Y.total.undated ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions include ${usd2.format(Y.total.undated)} received before dates were tracked.` : `${usd2.format(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here.`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>` : ""}</div>`;
       })
       .join("");
     return `<div class="stack"><div class="section-head"><h2>Year-end investment totals</h2><button class="btn" type="button" data-csv-yearend>Download CSV</button></div>
@@ -597,9 +602,12 @@
       if (formState() !== openState && !confirm("You have unsaved changes in this window. Changing the dated distributions saves right away and discards them. Continue?")) return;
       busy = true; err.textContent = "";
       try { await call(); } catch (e) { err.textContent = e.message; busy = false; return; }
+      const stillOpen = dlg.open;   // the admin may have pressed Cancel while the request was running
       dlg.close();
-      try { await refresh(); } catch { setTimeout(() => refresh(false, true).catch(() => {}), 3000); }
-      if (state.holdings.some((x) => x.id === id)) editHolding(id);
+      let fresh = true;
+      try { await refresh(); } catch { fresh = false; setTimeout(() => refresh(false, true).catch(() => {}), 3000); }
+      if (!fresh) { alert("Saved, but the list couldn't reload. Pull down to refresh before changing it again."); return; }
+      if (stillOpen && state.holdings.some((x) => x.id === id)) editHolding(id);
     };
     const add = () => {
       const date = $("#di-date", dlg).value, amount = Number($("#di-amt", dlg).value), err = $("#di-err", dlg);
@@ -613,8 +621,8 @@
   }
   // "$X of the $Y total has dates; $Z is earlier and undated."
   function datedBits(h) {
-    const dated = (h.distLog || []).reduce((s, e) => s + e.amount, 0), undated = Math.max(0, h.distributions - dated);
-    return `Total ${usd2.format(h.distributions)}: ${usd2.format(dated)} dated${undated > 0.004 ? `, ${usd2.format(undated)} received before dates were tracked` : ""}.`;
+    const dated = datedSum(h), undated = undatedOf(h);
+    return `Total ${usd2.format(h.distributions)}: ${usd2.format(dated)} dated${undated ? `, ${usd2.format(undated)} received before dates were tracked` : ""}.`;
   }
 
   // ---------- shell ----------

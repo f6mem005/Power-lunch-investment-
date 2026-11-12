@@ -476,6 +476,8 @@ export default async (req: Request) => {
         h.date = dateStr(body.date ?? h.date, "Investment date");
         h.invested = money(body.invested ?? h.invested, "Amount invested");
         h.distributions = optDistributions(body.distributions);
+        const firstDist = [...(h.distLog ?? [])].map((e) => e.date).sort()[0];
+        if (firstDist && firstDist < h.date) bad("The investment date can't be later than a distribution already recorded on " + firstDist + ". Remove or change that distribution first.");
         if (h.distributions + 0.004 < loggedTotal(h)) bad("Distributions can't be less than the " + usdText(loggedTotal(h)) + " already recorded with dates. Remove those dated entries first.");
         await checkRefs(h.dealId, h.personId);
         await putOne(KINDS.holding, h);
