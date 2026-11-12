@@ -309,9 +309,9 @@
     const q = (v) => `"${(typeof v === "string" && /^\s*[=+\-@]|^[\t\r]/.test(v) && !/^-?\d+(\.\d+)?$/.test(v) ? "'" : "") + String(v).replace(/"/g, '""')}"`;
     const rows = [["Year", "Holder", "Status", "Invested during year", "Total invested at year-end (or to date)", "% of club members' total", "Distributions during year", "Distributions through year-end (or to date)", "Distributions with no date (only in the to-date figure)"]];
     yearEndData().forEach((Y) => {
-      Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : "", r.distDuring, r.distCum, r.undated]));
-      Y.others.forEach((r) => rows.push([Y.y, r.p.name, "non-member", r.during, r.cum, "", r.distDuring, r.distCum, r.undated]));
-      rows.push([Y.y, "TOTAL (club members)", "", Y.total.during, Y.total.cum, "100.00", Y.total.distDuring, Y.total.distCum, Y.total.undated]);
+      Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : "", r.distDuring, r.distCum, Y.current ? r.undated : ""]));
+      Y.others.forEach((r) => rows.push([Y.y, r.p.name, "non-member", r.during, r.cum, "", r.distDuring, r.distCum, Y.current ? r.undated : ""]));
+      rows.push([Y.y, "TOTAL (club members)", "", Y.total.during, Y.total.cum, "100.00", Y.total.distDuring, Y.total.distCum, Y.current ? Y.total.undated : ""]);
     });
     const blob = new Blob([rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
@@ -583,7 +583,7 @@
         <div><label for="h-dist">Distributions, total ($)</label><input id="h-dist" name="distributions" type="number" min="0" step="0.01" value="${h.distributions}"></div></div>
       <h3 style="margin-top:16px">Dated distributions</h3>
       <p class="muted" style="margin:4px 0 8px">Add each distribution with the date it was received, so Year-end can add them up by year. ${datedBits(h)} Adding or removing one changes the total above, and saves right away; any other changes typed in this window are not saved.</p>
-      ${(h.distLog || []).length ? `<ul class="distlist">${(h.distLog || []).map((e) => `<li><span>${dateFmt(e.date)} · <strong>${usd2.format(e.amount)}</strong></span> <button class="btn small danger" type="button" data-del-dist="${esc(e.id)}">Remove</button></li>`).join("")}</ul>` : ""}
+      ${(h.distLog || []).length ? `<ul class="distlist">${(h.distLog || []).map((e) => `<li><span>${dateFmt(e.date)} · <strong>${usd2.format(e.amount)}</strong></span> <button class="btn small danger" type="button" data-del-dist="${esc(e.id)}" aria-label="Remove the ${esc(usd2.format(e.amount))} distribution from ${esc(dateFmt(e.date))}">Remove</button></li>`).join("")}</ul>` : ""}
       <div class="form-grid">
         <div><label for="di-date">Date received</label><input id="di-date" type="date" min="${esc(h.date)}" max="${today()}" value="${today()}"></div>
         <div><label for="di-amt">Amount ($)</label><input id="di-amt" type="number" min="0" step="0.01" inputmode="decimal"></div>
@@ -617,7 +617,11 @@
     };
     $("#di-add", dlg).onclick = add;
     for (const el of [$("#di-date", dlg), $("#di-amt", dlg)]) el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); if (!e.repeat) add(); } });   // Enter must not save the rest of the form
-    dlg.querySelectorAll("[data-del-dist]").forEach((b) => (b.onclick = () => change(() => api(`/api/holdings/${id}/distributions/${b.dataset.delDist}`, { method: "DELETE" }))));
+    dlg.querySelectorAll("[data-del-dist]").forEach((b) => (b.onclick = () => {
+      const e = (h.distLog || []).find((x) => x.id === b.dataset.delDist);
+      if (e && !confirm(`Remove the ${usd2.format(e.amount)} distribution received ${dateFmt(e.date)}? This lowers the holding's total distributions.`)) return;
+      change(() => api(`/api/holdings/${id}/distributions/${b.dataset.delDist}`, { method: "DELETE" }));
+    }));
   }
   // "$X of the $Y total has dates; $Z is earlier and undated."
   function datedBits(h) {

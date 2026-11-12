@@ -434,7 +434,7 @@ export default async (req: Request) => {
         const log = [...(h.distLog ?? [])];
         if (method === "POST" && !parts[3]) {
           if (log.length >= MAX_DIST_ENTRIES) bad(`A holding can have up to ${MAX_DIST_ENTRIES} dated distributions`);
-          const date = pastDate(body.date, "Distribution date");
+          const date = pastDate(body.date, "Distribution date", true);   // one day of slack for time zones, as on the My deals forms
           if (date < h.date) bad("A distribution can't be dated before the investment date");
           const amount = money(body.amount, "Amount");
           if (amount <= 0) bad("The amount must be more than 0 dollars");
@@ -475,7 +475,7 @@ export default async (req: Request) => {
         h.personId = str(body.personId ?? h.personId, "Person");
         h.date = dateStr(body.date ?? h.date, "Investment date");
         h.invested = money(body.invested ?? h.invested, "Amount invested");
-        h.distributions = optDistributions(body.distributions);
+        if (body.distributions !== undefined) h.distributions = optDistributions(body.distributions);   // not sent = keep what is recorded
         const firstDist = [...(h.distLog ?? [])].map((e) => e.date).sort()[0];
         if (firstDist && firstDist < h.date) bad("The investment date can't be later than a distribution already recorded on " + firstDist + ". Remove or change that distribution first.");
         if (h.distributions + 0.004 < loggedTotal(h)) bad("Distributions can't be less than the " + usdText(loggedTotal(h)) + " already recorded with dates. Remove those dated entries first.");
