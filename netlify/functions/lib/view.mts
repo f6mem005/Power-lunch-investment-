@@ -45,7 +45,7 @@ export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], al
     const gross = valuation(d).value * share;
     const fee = h.invested * ((d.mgmtFeePct || 0) / 100);
     const carry = ((d.carryPct || 0) / 100) * Math.max(0, gross + h.distributions - h.invested); // % of profit, no hurdle
-    return { id: h.id, dealId: h.dealId, personId: h.personId, date: h.date, invested: h.invested, distributions: h.distributions, gross, fee, carry, value: gross - carry, share: whole ? share : null, shares: whole && d.sharesHeld ? d.sharesHeld * share : null };
+    return { id: h.id, dealId: h.dealId, personId: h.personId, date: h.date, invested: h.invested, distributions: h.distributions, distLog: h.distLog ?? [], gross, fee, carry, value: gross - carry, share: whole ? share : null, shares: whole && d.sharesHeld ? d.sharesHeld * share : null };
   };
   const baseOf = (d: Deal, whole: boolean) => {
     const v = valuation(d);

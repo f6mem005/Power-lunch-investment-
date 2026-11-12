@@ -21,13 +21,16 @@ export type Deal = {
   notes: string;
   valueHistory: ValueEntry[];
 };
+// One dated distribution received on a holding.
+export type DistEntry = { id: string; date: string; amount: number };
 export type Holding = {
   id: string;
   dealId: string;
   personId: string;
   date: string;
   invested: number;
-  distributions: number;
+  distributions: number; // total received: the dated entries below plus any earlier amount that has no date
+  distLog?: DistEntry[]; // dated distributions, so Year-end can add them up by year
 };
 
 export type AuthRecord = { id: string; salt: string; hash: string; iter: number; ver: string; updatedAt: string };

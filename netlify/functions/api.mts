@@ -133,6 +133,11 @@ function recordSplit(d: Deal, body: any, source: string, lenient = false) {
   if (!applySplit(d, split, source)) bad("That split would leave no shares");
 }
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const loggedTotal = (h: Holding) => round2((h.distLog ?? []).reduce((s, e) => s + e.amount, 0)); // the part of `distributions` that has dates
+const MAX_DIST_ENTRIES = 200;
+const usdText = (n: number) => "$" + n.toFixed(2);
+
 const MAX_OWN_DEALS = 25; // per person, so nobody can fill the store or flood the price provider with tickers
 const OWN_DEAL_HINT = "This is a member's own deal. Change it under Manage > Members' own deals.";
 
@@ -421,6 +426,34 @@ export default async (req: Request) => {
         const h = await getOne<Holding>(KINDS.holding, hid);
         return !!h && !!(await getOne<Deal>(KINDS.deal, h.dealId))?.ownerId;
       };
+      // Dated distributions: each one is added to (or removed from) the holding's total, so values, carry and gain stay consistent.
+      if (id && parts[2] === "distributions") {
+        const h = await getOne<Holding>(KINDS.holding, id);
+        if (!h) return fail("Not found", 404);
+        if (await inOwnDeal(id)) bad(OWN_DEAL_HINT);
+        const log = [...(h.distLog ?? [])];
+        if (method === "POST" && !parts[3]) {
+          if (log.length >= MAX_DIST_ENTRIES) bad(`A holding can have up to ${MAX_DIST_ENTRIES} dated distributions`);
+          const date = pastDate(body.date, "Distribution date");
+          if (date < h.date) bad("A distribution can't be dated before the investment date");
+          const amount = money(body.amount, "Amount");
+          if (amount <= 0) bad("The amount must be more than 0 dollars");
+          log.push({ id: crypto.randomUUID().slice(0, 8), date, amount });
+          h.distLog = log.sort((a, b) => a.date.localeCompare(b.date));
+          h.distributions = round2(h.distributions + amount);
+          await putOne(KINDS.holding, h);
+          return json(h, 201);
+        }
+        if (method === "DELETE" && parts[3]) {
+          const entry = log.find((e) => e.id === parts[3]);
+          if (!entry) return fail("Not found", 404);
+          h.distLog = log.filter((e) => e.id !== entry.id);
+          h.distributions = Math.max(0, round2(h.distributions - entry.amount));
+          await putOne(KINDS.holding, h);
+          return json(h);
+        }
+        return fail("Not found", 404);
+      }
       if (method === "POST") {
         const h: Holding = {
           id: crypto.randomUUID().slice(0, 8),
@@ -443,6 +476,7 @@ export default async (req: Request) => {
         h.date = dateStr(body.date ?? h.date, "Investment date");
         h.invested = money(body.invested ?? h.invested, "Amount invested");
         h.distributions = optDistributions(body.distributions);
+        if (h.distributions + 0.004 < loggedTotal(h)) bad("Distributions can't be less than the " + usdText(loggedTotal(h)) + " already recorded with dates. Remove those dated entries first.");
         await checkRefs(h.dealId, h.personId);
         await putOne(KINDS.holding, h);
         return json(h);

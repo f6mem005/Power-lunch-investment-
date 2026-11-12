@@ -157,6 +157,8 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .login-card .btn { width: 100%; margin-top: 6px; }
 .login-card .showpass { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-weight: 400; cursor: pointer; }
 .login-card .showpass input { width: auto; margin: 0; }
+.distlist { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.distlist li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
 @media (max-width: 560px) {
   .bar-row { grid-template-columns: 70px 1fr 80px; }

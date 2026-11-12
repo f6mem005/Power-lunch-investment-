@@ -101,11 +101,17 @@ the new share count, multiplies the count and logs the split. The same window sh
 - For a public deal the live price changes on the split date, so record the split then; until you do, shares x price is wrong.
 - An exact repeat of a split already recorded is refused, so a double tap can't apply it twice.
 
+## Dated distributions
+
+Each holding keeps one running total of distributions (used for value, carry and gain). In **Edit holding** the admin can also add each distribution with the date it was received. Adding one raises the total by its amount, removing one lowers it, and the total can never be set below the dated entries. Anything already in the total without a date is shown as "received before dates were tracked".
+
 ## Year-end totals
 
 The Year-end tab shows, for Power Lunch Club deals only (Individual deals are excluded), what each club member
 had invested in total at each 12/31 (and "to date" for the current year), their % of the club, and what went in
-during the year. Amounts are cost by investment date, including upfront fees. Download CSV exports all years.
+during the year. Amounts are cost by investment date, including upfront fees. Each year's card also shows the distributions
+received during that year and the running total through it (this year plus all prior years), built from the dated distributions
+above; an amount with no date is counted only in the current year's "to date" figure and is called out. Download CSV exports all years.
 Non-member holders in club deals are listed separately and are not counted in the totals or percentages.
 
 ## Install as an app (Home Screen)
