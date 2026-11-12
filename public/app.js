@@ -298,7 +298,7 @@
         const body = Y.members.map((r) => `<tr><td>${esc(r.p.name)}</td>${cells(r)}<td class="num">${Y.total.cum ? pct(r.cum / Y.total.cum, 2) : "—"}</td>${tail(r)}</tr>`).join("");
         const others = Y.others.map((r) => `<tr class="muted"><td>${esc(r.p.name)} (non-member, not counted above)</td>${cells(r)}<td class="num"></td>${tail(r)}</tr>`).join("");
         const undatedNote = Y.total.undated
-          ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions, and so the capital account now, include ${usd2.format(Y.total.undated)} received before dates were tracked.` : `${usd2.format(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here, and this year's capital accounts leave them out (they come out of the current year's balance).`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>`
+          ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions, and so the capital account now, include ${usd2.format(Y.total.undated)} received before dates were tracked.` : `${usd2.format(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here. The capital accounts for the years before the current one leave them out, and the current year's balance takes them.`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>`
           : "";
         return `<div class="card"><div class="person-head"><h3>${Y.y}${Y.current ? " (so far)" : ""}</h3><span class="muted">${Y.deals.length ? `Deals this year: ${esc(Y.deals.join(", "))}` : "No new deals this year"}</span></div>
           <div class="table-wrap"><table class="wrap-head"><thead><tr><th>Member</th><th class="num">Invested during ${Y.y}</th><th class="num">Total invested ${esc(label)}</th><th class="num">% of club</th><th class="num">Distributions during ${Y.y}</th><th class="num">Distributions ${Y.current ? "to date" : `through ${Y.y}`}</th><th class="num">K-1 net income ${Y.y}</th><th class="num">Capital account ${Y.current ? "now" : `end of ${Y.y}`}</th></tr></thead>
@@ -308,7 +308,7 @@
       .join("");
     return `<div class="stack"><div class="section-head"><h2>Year-end totals</h2><button class="btn" type="button" data-csv-yearend>Download CSV</button></div>
       <p class="muted" style="margin:-4px 0 0">Power Lunch Club deals only. Individual deals are excluded. Amounts invested are cash (including any upfront management fee), by investment date, not current value. Each year's card shows that year on its own and the running total of that year plus all prior years, for both money invested and distributions received. Distributions are counted in the year of the date they were received.</p>
-      <p class="muted" style="margin:0">The <strong>capital account</strong> is each member's balance in the club: the end of the previous year, plus what they invested during the year, plus their share of the K-1 net income (the K-1s are entered and split under the K-1 section), minus the distributions they received. It is built from what is entered here, so it is an estimate. Built from the holdings you've entered, so confirm with your accountant before filing.</p>${cards}</div>`;
+      <p class="muted" style="margin:0">The <strong>capital account</strong> is each member's balance in the club: the end of the previous year, plus what they invested during the year, plus their share of the K-1 net income (the K-1s are entered and split under the K-1 section), minus the distributions they received. It is built from what is entered here, so it is an estimate: confirm it with your accountant before filing.</p>${cards}</div>`;
   }
   function yearEndCsv() {
     // A name that starts with = + - @ would run as a formula when the file is opened in a spreadsheet, so mark it as text.
@@ -386,7 +386,7 @@
       <div class="card"><h2>All holdings</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Person</th><th>Date</th><th class="num">Invested</th><th class="num">Distributions</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }
 
-  // ---------- Club: Year-end totals, K-1s and Accounts (club members and the admin) ----------
+  // ---------- Club: Year-end totals and capital accounts, K-1s and Deal values (club members and the admin) ----------
   const clubHoldings = () => state.holdings.filter((h) => dealById(h.dealId)?.channel === "club");
   const lineSum = (r, type) => r2(r.lines.filter((l) => l.type === type).reduce((s, l) => s + l.amount, 0));
   const isClubAdmin = () => state.role === "admin" && !state.previewOf;
@@ -478,7 +478,7 @@
     return out;
   }
 
-  function accountsView() {   // the Deal values section
+  function dealValuesView() {
     const admin = isClubAdmin();
     const years = [...new Set(state.accountValues.map((v) => v.year))].sort((a, b) => b - a);
     const dealIds = [...new Set(state.accountValues.map((v) => v.dealId))];
@@ -505,7 +505,7 @@
     const sec = ["yearend", "k1", "dealvalues"].includes(state.clubSection) ? state.clubSection : "yearend";
     const tabs = [["yearend", "Year-end"], ["k1", "K-1"], ["dealvalues", "Deal values"]];
     const nav = `<div class="clubnav" role="radiogroup" aria-label="Club records">${tabs.map(([k, label]) => `<button type="button" role="radio" aria-checked="${sec === k}" data-club-sec="${k}">${label}</button>`).join("")}</div>`;
-    return `<div class="stack">${nav}${sec === "k1" ? k1View() : sec === "dealvalues" ? accountsView() : yearend()}</div>`;
+    return `<div class="stack">${nav}${sec === "k1" ? k1View() : sec === "dealvalues" ? dealValuesView() : yearend()}</div>`;
   }
 
   // The K-1 entry window: a deal, a year, and any number of income / expense lines (a loss is a negative income line).
