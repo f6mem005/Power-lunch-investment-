@@ -288,17 +288,17 @@
   function yearend() {
     const data = yearEndData();
     if (!data.length) return `<div class="card"><h2>Year-end totals</h2><p class="muted">No Power Lunch Club investments yet.</p></div>`;
-    const capBy = new Map(capitalData().map((C) => [C.y, C]));
+    const cap = capitalData(data);
     const cards = data
       .map((Y) => {
         const label = Y.current ? `to date (${dateFmt(today())})` : `at 12/31/${Y.y}`;
-        const C = capBy.get(Y.y), capOf = (r) => [...C.members, ...C.others].find((x) => x.p.id === r.p.id);
+        const C = cap.get(Y.y);
         const cells = (r) => `<td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td>`;
-        const tail = (r) => { const c = capOf(r); return `<td class="num">${r.distDuring ? usd2.format(r.distDuring) : "—"}</td><td class="num">${r.distCum ? usd2.format(r.distCum) : "—"}</td><td class="num">${c && c.k1 ? signed2(c.k1) : "—"}</td><td class="num">${c ? `<strong>${signed2(c.end)}</strong>` : "—"}</td>`; };
+        const tail = (r) => { const c = C.rows.get(r.p.id); return `<td class="num">${r.distDuring ? usd2.format(r.distDuring) : "—"}</td><td class="num">${r.distCum ? usd2.format(r.distCum) : "—"}</td><td class="num">${c && c.k1 ? signed2(c.k1) : "—"}</td><td class="num">${c ? `<strong>${signed2(c.end)}</strong>` : "—"}</td>`; };
         const body = Y.members.map((r) => `<tr><td>${esc(r.p.name)}</td>${cells(r)}<td class="num">${Y.total.cum ? pct(r.cum / Y.total.cum, 2) : "—"}</td>${tail(r)}</tr>`).join("");
         const others = Y.others.map((r) => `<tr class="muted"><td>${esc(r.p.name)} (non-member, not counted above)</td>${cells(r)}<td class="num"></td>${tail(r)}</tr>`).join("");
         const undatedNote = Y.total.undated
-          ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions, and so the capital account now, include ${usd2.format(Y.total.undated)} received before dates were tracked.` : `${usd2.format(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here.`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>`
+          ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions, and so the capital account now, include ${usd2.format(Y.total.undated)} received before dates were tracked.` : `${usd2.format(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here, and this year's capital accounts leave them out (they come out of the current year's balance).`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>`
           : "";
         return `<div class="card"><div class="person-head"><h3>${Y.y}${Y.current ? " (so far)" : ""}</h3><span class="muted">${Y.deals.length ? `Deals this year: ${esc(Y.deals.join(", "))}` : "No new deals this year"}</span></div>
           <div class="table-wrap"><table class="wrap-head"><thead><tr><th>Member</th><th class="num">Invested during ${Y.y}</th><th class="num">Total invested ${esc(label)}</th><th class="num">% of club</th><th class="num">Distributions during ${Y.y}</th><th class="num">Distributions ${Y.current ? "to date" : `through ${Y.y}`}</th><th class="num">K-1 net income ${Y.y}</th><th class="num">Capital account ${Y.current ? "now" : `end of ${Y.y}`}</th></tr></thead>
@@ -314,11 +314,11 @@
     // A name that starts with = + - @ would run as a formula when the file is opened in a spreadsheet, so mark it as text.
     const q = (v) => `"${(typeof v === "string" && /^\s*[=+\-@]|^[\t\r]/.test(v) && !/^-?\d+(\.\d+)?$/.test(v) ? "'" : "") + String(v).replace(/"/g, '""')}"`;
     const rows = [["Year", "Holder", "Status", "Invested during year", "Total invested at year-end (or to date)", "% of club members' total", "Distributions during year", "Distributions through year-end (or to date)", "Distributions with no date (only in the to-date figure)", "K-1 net income during year", "Capital account at year-end (or now)"]];
-    const capBy = new Map(capitalData().map((C) => [C.y, C]));
-    yearEndData().forEach((Y) => {
-      const C = capBy.get(Y.y), cap = (r) => [...C.members, ...C.others].find((x) => x.p.id === r.p.id);
-      Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : "", r.distDuring, r.distCum, Y.current ? r.undated : "", cap(r)?.k1 ?? "", cap(r)?.end ?? ""]));
-      Y.others.forEach((r) => rows.push([Y.y, r.p.name, "non-member", r.during, r.cum, "", r.distDuring, r.distCum, Y.current ? r.undated : "", cap(r)?.k1 ?? "", cap(r)?.end ?? ""]));
+    const ye = yearEndData(), cap = capitalData(ye);
+    ye.forEach((Y) => {
+      const C = cap.get(Y.y), cr = (r) => C.rows.get(r.p.id);
+      Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : "", r.distDuring, r.distCum, Y.current ? r.undated : "", cr(r)?.k1 ?? "", cr(r)?.end ?? ""]));
+      Y.others.forEach((r) => rows.push([Y.y, r.p.name, "non-member", r.during, r.cum, "", r.distDuring, r.distCum, Y.current ? r.undated : "", cr(r)?.k1 ?? "", cr(r)?.end ?? ""]));
       rows.push([Y.y, "TOTAL (club members)", "", Y.total.during, Y.total.cum, "100.00", Y.total.distDuring, Y.total.distCum, Y.current ? Y.total.undated : "", C.total.k1, C.total.end]);
     });
     const blob = new Blob([rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" });
@@ -454,29 +454,31 @@
   }
   const signed2 = (n) => `${n < 0 ? "−" : ""}${usd2.format(Math.abs(n))}`;
 
-  // Each member's capital account in the club: start of year + money put in + K-1 net income − distributions = end of year.
-  function capitalData() {
-    const ye = yearEndData().slice().reverse();   // oldest first
+  // Each member's capital account in the club: start of year + money put in + K-1 net income - distributions = end of year. Returns, by
+  // year, each person's K-1 net income and end balance (and the members' totals); Year-end shows them with the other member figures.
+  function capitalData(ye) {
     const { perYear } = k1Data();
-    const ends = new Map();                       // personId -> balance at the end of the previous year
-    const out = [];
-    for (const Y of ye) {
-      const k = perYear.get(Y.y) || new Map();
+    const ends = new Map();   // personId -> balance at the end of the previous year
+    const out = new Map();
+    for (const Y of ye.slice().reverse()) {   // oldest year first
+      const k = perYear.get(Y.y) || new Map(), rows = new Map();
       const rowFor = (r) => {
         const a = k.get(r.p.id), start = ends.get(r.p.id) || 0, k1 = r2((a?.income || 0) - (a?.expenses || 0));
         const dist = r2(r.distDuring + (Y.current ? r.undated : 0));   // this year's figure also takes the distributions that have no date, so it matches Year-end's to-date total
         const end = r2(start + r.during + k1 - dist);
         ends.set(r.p.id, end);
-        return { p: r.p, start, contrib: r.during, k1, dist, end };
+        const row = { k1, end };
+        rows.set(r.p.id, row);
+        return row;
       };
-      const members = Y.members.map(rowFor), others = Y.others.map(rowFor);
-      const tot = (key) => r2(members.reduce((s, r) => s + r[key], 0));
-      out.push({ y: Y.y, current: Y.current, members, others, total: { start: tot("start"), contrib: tot("contrib"), k1: tot("k1"), dist: tot("dist"), end: tot("end") }, undated: Y.total.undated });
+      const members = Y.members.map(rowFor);
+      Y.others.forEach(rowFor);
+      out.set(Y.y, { rows, total: { k1: r2(members.reduce((t, r) => t + r.k1, 0)), end: r2(members.reduce((t, r) => t + r.end, 0)) } });
     }
-    return out.reverse();                         // newest first
+    return out;
   }
 
-  function accountsView() {
+  function accountsView() {   // the Deal values section
     const admin = isClubAdmin();
     const years = [...new Set(state.accountValues.map((v) => v.year))].sort((a, b) => b - a);
     const dealIds = [...new Set(state.accountValues.map((v) => v.dealId))];
@@ -500,10 +502,10 @@
   }
 
   function club() {
-    const sec = ["yearend", "k1", "accounts"].includes(state.clubSection) ? state.clubSection : "yearend";
-    const tabs = [["yearend", "Year-end"], ["k1", "K-1"], ["accounts", "Deal values"]];
+    const sec = ["yearend", "k1", "dealvalues"].includes(state.clubSection) ? state.clubSection : "yearend";
+    const tabs = [["yearend", "Year-end"], ["k1", "K-1"], ["dealvalues", "Deal values"]];
     const nav = `<div class="clubnav" role="radiogroup" aria-label="Club records">${tabs.map(([k, label]) => `<button type="button" role="radio" aria-checked="${sec === k}" data-club-sec="${k}">${label}</button>`).join("")}</div>`;
-    return `<div class="stack">${nav}${sec === "k1" ? k1View() : sec === "accounts" ? accountsView() : yearend()}</div>`;
+    return `<div class="stack">${nav}${sec === "k1" ? k1View() : sec === "dealvalues" ? accountsView() : yearend()}</div>`;
   }
 
   // The K-1 entry window: a deal, a year, and any number of income / expense lines (a loss is a negative income line).

@@ -133,7 +133,8 @@ The Year-end section shows, for Power Lunch Club deals only (Individual deals ar
 had invested in total at each 12/31 (and "to date" for the current year), their % of the club, and what went in
 during the year. Amounts are cost by investment date, including upfront fees. Each year's card also shows the distributions
 received during that year and the running total through it (this year plus all prior years), built from the dated distributions
-above; an amount with no date is counted only in the current year's "to date" figure and is called out. Download CSV exports all years.
+above; an amount with no date is counted only in the current year's "to date" figure and is called out. Each card also ends with the K-1 net income and the capital account (see above). Download CSV exports all years, with the same
+columns: invested, % of club, distributions during/through the year, distributions with no date, K-1 net income and capital account.
 Non-member holders in club deals are listed separately and are not counted in the totals or percentages.
 
 ## Install as an app (Home Screen)
