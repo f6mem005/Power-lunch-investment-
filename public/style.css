@@ -157,6 +157,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .login-card .btn { width: 100%; margin-top: 6px; }
 .login-card .showpass { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-weight: 400; cursor: pointer; }
 .login-card .showpass input { width: auto; margin: 0; }
+/* Club tables have long column titles: let them wrap onto two lines so every column fits without sideways scrolling where there is room. */
+.wrap-head th { white-space: normal; vertical-align: bottom; line-height: 1.25; }
+.wrap-head th, .wrap-head td { padding-left: 8px; padding-right: 8px; }
 .clubnav { display: flex; gap: 6px; flex-wrap: wrap; }
 .clubnav button { font: inherit; font-weight: 600; padding: 6px 14px; border-radius: 99px; cursor: pointer; border: 1px solid var(--axis); background: var(--surface); color: var(--ink-2); }
 .clubnav button[aria-checked="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }

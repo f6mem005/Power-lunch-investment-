@@ -36,7 +36,7 @@ Enforced on the server (the browser is only sent what the person may see):
 |---|---|
 | Admin | Everything, and can edit. "Preview as <person>" shows exactly what that person sees. |
 | Anyone | Every holder of any deal they hold a stake in, club or individual (you see who invested alongside you). Nothing from deals they aren't in. |
-| Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Club tab (Year-end totals, K-1s and account values). |
+| Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Club tab (Year-end totals and capital accounts, K-1s and deal values). |
 | Non-member | Only the deals they hold. No other club deals, no Club tab. |
 
 ### My deals (private deals a person adds for themselves)
@@ -107,7 +107,7 @@ Each holding keeps one running total of distributions (used for value, carry and
 
 ## The Club tab (club members and the admin only)
 
-Everything that applies only to the Power Lunch Club lives in one tab, **Club**, with three sections: **Year-end**, **K-1** and **Accounts**.
+Everything that applies only to the Power Lunch Club lives in one tab, **Club**, with three sections: **Year-end** (everything per member), **K-1** and **Deal values**.
 Non-members never see the tab or any of its data (the server doesn't send it). The old `#yearend` link still opens it.
 
 ### K-1 income and expenses
@@ -117,11 +117,15 @@ The app splits it across the deal's holders by their share of the money in that 
 running total of that year plus all prior years. The split is an estimate (the real one follows the partnership agreement), and nothing per member
 is stored, so correcting a K-1 or an investment updates everything.
 
-### Account values
+### Deal values
 
-- **Deal account values:** the admin records what a club deal's statement shows at 12/31; the tab shows each year and the change from the previous year recorded.
-- **Member capital accounts:** for each year, start of year + money put in (including any upfront fee) + K-1 net income - distributions received that year = end of year.
-  Built from what is entered, so it is an estimate to compare with your K-1s and statements. Distributions without a date are left out and called out.
+The admin records what a club deal's statement shows at 12/31; the **Deal values** section shows each year and the change from the previous year recorded.
+
+### Member capital accounts (in Year-end)
+
+Each year's Year-end card ends with the K-1 net income and the member's **capital account**: end of the previous year + money put in (including any upfront fee) +
+K-1 net income - distributions received that year = end of the year. Built from what is entered, so it is an estimate to compare with your K-1s and statements.
+Distributions without a date are counted only in the current year (so the balance now matches "distributions to date") and called out.
 
 ## Year-end totals
 

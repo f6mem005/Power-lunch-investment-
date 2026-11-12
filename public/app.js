@@ -288,30 +288,38 @@
   function yearend() {
     const data = yearEndData();
     if (!data.length) return `<div class="card"><h2>Year-end totals</h2><p class="muted">No Power Lunch Club investments yet.</p></div>`;
+    const capBy = new Map(capitalData().map((C) => [C.y, C]));
     const cards = data
       .map((Y) => {
         const label = Y.current ? `to date (${dateFmt(today())})` : `at 12/31/${Y.y}`;
-        const body = Y.members
-          .map((r) => `<tr><td>${esc(r.p.name)}</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num">${Y.total.cum ? pct(r.cum / Y.total.cum, 2) : "—"}</td><td class="num">${r.distDuring ? usd2.format(r.distDuring) : "—"}</td><td class="num">${r.distCum ? usd2.format(r.distCum) : "—"}</td></tr>`)
-          .join("");
-        const others = Y.others.map((r) => `<tr class="muted"><td>${esc(r.p.name)} (non-member, not counted above)</td><td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td><td class="num"></td><td class="num">${r.distDuring ? usd2.format(r.distDuring) : "—"}</td><td class="num">${r.distCum ? usd2.format(r.distCum) : "—"}</td></tr>`).join("");
+        const C = capBy.get(Y.y), capOf = (r) => [...C.members, ...C.others].find((x) => x.p.id === r.p.id);
+        const cells = (r) => `<td class="num">${r.during ? money(r.during) : "—"}</td><td class="num">${r.cum ? money(r.cum) : "—"}</td>`;
+        const tail = (r) => { const c = capOf(r); return `<td class="num">${r.distDuring ? usd2.format(r.distDuring) : "—"}</td><td class="num">${r.distCum ? usd2.format(r.distCum) : "—"}</td><td class="num">${c && c.k1 ? signed2(c.k1) : "—"}</td><td class="num">${c ? `<strong>${signed2(c.end)}</strong>` : "—"}</td>`; };
+        const body = Y.members.map((r) => `<tr><td>${esc(r.p.name)}</td>${cells(r)}<td class="num">${Y.total.cum ? pct(r.cum / Y.total.cum, 2) : "—"}</td>${tail(r)}</tr>`).join("");
+        const others = Y.others.map((r) => `<tr class="muted"><td>${esc(r.p.name)} (non-member, not counted above)</td>${cells(r)}<td class="num"></td>${tail(r)}</tr>`).join("");
+        const undatedNote = Y.total.undated
+          ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions, and so the capital account now, include ${usd2.format(Y.total.undated)} received before dates were tracked.` : `${usd2.format(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here.`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>`
+          : "";
         return `<div class="card"><div class="person-head"><h3>${Y.y}${Y.current ? " (so far)" : ""}</h3><span class="muted">${Y.deals.length ? `Deals this year: ${esc(Y.deals.join(", "))}` : "No new deals this year"}</span></div>
-          <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">Invested during ${Y.y}</th><th class="num">Total invested ${esc(label)}</th><th class="num">% of club</th><th class="num">Distributions during ${Y.y}</th><th class="num">Distributions ${Y.current ? "to date" : `through ${Y.y}`}</th></tr></thead>
-          <tbody>${body}${others}</tbody><tfoot><tr><td>Total, club members</td><td class="num">${money(Y.total.during)}</td><td class="num">${money(Y.total.cum)}</td><td class="num">100%</td><td class="num">${usd2.format(Y.total.distDuring)}</td><td class="num">${usd2.format(Y.total.distCum)}</td></tr></tfoot></table></div>
-          ${Y.total.undated ? `<p class="muted" style="margin:8px 0 0">${Y.current ? `The to-date distributions include ${usd2.format(Y.total.undated)} received before dates were tracked.` : `${usd2.format(Y.total.undated)} of distributions have no date yet, so they are not counted in any single year here.`}${state.role === "admin" ? " Add dates under Manage > Edit holding." : ""}</p>` : ""}</div>`;
+          <div class="table-wrap"><table class="wrap-head"><thead><tr><th>Member</th><th class="num">Invested during ${Y.y}</th><th class="num">Total invested ${esc(label)}</th><th class="num">% of club</th><th class="num">Distributions during ${Y.y}</th><th class="num">Distributions ${Y.current ? "to date" : `through ${Y.y}`}</th><th class="num">K-1 net income ${Y.y}</th><th class="num">Capital account ${Y.current ? "now" : `end of ${Y.y}`}</th></tr></thead>
+          <tbody>${body}${others}</tbody><tfoot><tr><td>Total, club members</td><td class="num">${money(Y.total.during)}</td><td class="num">${money(Y.total.cum)}</td><td class="num">100%</td><td class="num">${usd2.format(Y.total.distDuring)}</td><td class="num">${usd2.format(Y.total.distCum)}</td><td class="num">${C.total.k1 ? signed2(C.total.k1) : "—"}</td><td class="num"><strong>${signed2(C.total.end)}</strong></td></tr></tfoot></table></div>
+          ${undatedNote}</div>`;
       })
       .join("");
-    return `<div class="stack"><div class="section-head"><h2>Year-end investment totals</h2><button class="btn" type="button" data-csv-yearend>Download CSV</button></div>
-      <p class="muted" style="margin:-4px 0 0">Power Lunch Club deals only. Individual deals are excluded. Amounts are cash invested (including any upfront management fee), by investment date, not current value. Each year's card shows that year on its own and the running total of that year plus all prior years, for both money invested and distributions received. Distributions are counted in the year of the date they were received. Built from the holdings you've entered, so confirm with your accountant before filing.</p>${cards}</div>`;
+    return `<div class="stack"><div class="section-head"><h2>Year-end totals</h2><button class="btn" type="button" data-csv-yearend>Download CSV</button></div>
+      <p class="muted" style="margin:-4px 0 0">Power Lunch Club deals only. Individual deals are excluded. Amounts invested are cash (including any upfront management fee), by investment date, not current value. Each year's card shows that year on its own and the running total of that year plus all prior years, for both money invested and distributions received. Distributions are counted in the year of the date they were received.</p>
+      <p class="muted" style="margin:0">The <strong>capital account</strong> is each member's balance in the club: the end of the previous year, plus what they invested during the year, plus their share of the K-1 net income (the K-1s are entered and split under the K-1 section), minus the distributions they received. It is built from what is entered here, so it is an estimate. Built from the holdings you've entered, so confirm with your accountant before filing.</p>${cards}</div>`;
   }
   function yearEndCsv() {
     // A name that starts with = + - @ would run as a formula when the file is opened in a spreadsheet, so mark it as text.
     const q = (v) => `"${(typeof v === "string" && /^\s*[=+\-@]|^[\t\r]/.test(v) && !/^-?\d+(\.\d+)?$/.test(v) ? "'" : "") + String(v).replace(/"/g, '""')}"`;
-    const rows = [["Year", "Holder", "Status", "Invested during year", "Total invested at year-end (or to date)", "% of club members' total", "Distributions during year", "Distributions through year-end (or to date)", "Distributions with no date (only in the to-date figure)"]];
+    const rows = [["Year", "Holder", "Status", "Invested during year", "Total invested at year-end (or to date)", "% of club members' total", "Distributions during year", "Distributions through year-end (or to date)", "Distributions with no date (only in the to-date figure)", "K-1 net income during year", "Capital account at year-end (or now)"]];
+    const capBy = new Map(capitalData().map((C) => [C.y, C]));
     yearEndData().forEach((Y) => {
-      Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : "", r.distDuring, r.distCum, Y.current ? r.undated : ""]));
-      Y.others.forEach((r) => rows.push([Y.y, r.p.name, "non-member", r.during, r.cum, "", r.distDuring, r.distCum, Y.current ? r.undated : ""]));
-      rows.push([Y.y, "TOTAL (club members)", "", Y.total.during, Y.total.cum, "100.00", Y.total.distDuring, Y.total.distCum, Y.current ? Y.total.undated : ""]);
+      const C = capBy.get(Y.y), cap = (r) => [...C.members, ...C.others].find((x) => x.p.id === r.p.id);
+      Y.members.forEach((r) => rows.push([Y.y, r.p.name, "member", r.during, r.cum, Y.total.cum ? ((r.cum / Y.total.cum) * 100).toFixed(2) : "", r.distDuring, r.distCum, Y.current ? r.undated : "", cap(r)?.k1 ?? "", cap(r)?.end ?? ""]));
+      Y.others.forEach((r) => rows.push([Y.y, r.p.name, "non-member", r.during, r.cum, "", r.distDuring, r.distCum, Y.current ? r.undated : "", cap(r)?.k1 ?? "", cap(r)?.end ?? ""]));
+      rows.push([Y.y, "TOTAL (club members)", "", Y.total.during, Y.total.cum, "100.00", Y.total.distDuring, Y.total.distCum, Y.current ? Y.total.undated : "", C.total.k1, C.total.end]);
     });
     const blob = new Blob([rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
@@ -436,7 +444,7 @@
       const recHtml = recs.map((r) => `<li><div class="person-head" style="margin:0"><span><strong>${esc(dealById(r.dealId)?.name || "Deal")}</strong> · income ${usd2.format(lineSum(r, "income"))} · expenses ${usd2.format(lineSum(r, "expense"))}</span>${isClubAdmin() ? `<button class="btn small" type="button" data-edit-k1="${esc(r.id)}">Edit</button>` : ""}</div>
         <details><summary>${r.lines.length} line${r.lines.length === 1 ? "" : "s"}</summary><ul>${r.lines.map((l) => `<li>${esc(l.label)} (${l.type}): ${usd2.format(l.amount)}</li>`).join("")}</ul>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}</details></li>`).join("");
       return `<div class="card"><div class="person-head"><h3>${y}${y === new Date().getFullYear() ? " (so far)" : ""}</h3></div>
-        <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">K-1 income ${y}</th><th class="num">K-1 expenses ${y}</th><th class="num">Net ${y}</th><th class="num">Net through ${y}</th></tr></thead>
+        <div class="table-wrap"><table class="wrap-head"><thead><tr><th>Member</th><th class="num">K-1 income ${y}</th><th class="num">K-1 expenses ${y}</th><th class="num">Net ${y}</th><th class="num">Net through ${y}</th></tr></thead>
         <tbody>${members.map((r) => row(r, false)).join("")}${others.map((r) => row(r, true)).join("")}</tbody>
         <tfoot><tr><td>Total, club members</td><td class="num">${usd2.format(sum("income"))}</td><td class="num">${usd2.format(sum("expenses"))}</td><td class="num">${cell(sum("net"))}</td><td class="num">${cell(sum("cum"))}</td></tr></tfoot></table></div>
         <ul class="k1list">${recHtml}</ul></div>`;
@@ -486,26 +494,14 @@
             const val = admin ? `<button class="btn small ghost" type="button" data-edit-acct="${esc(v.id)}" title="${esc(v.note || "Edit")}">${usd0.format(v.value)}</button>` : `<span title="${esc(v.note || "")}">${usd0.format(v.value)}</span>`;
             return `<td class="num">${val}${change}</td>`;
           }).join("")}</tr>`).join("")}</tbody></table></div>`;
-    const cap = capitalData();
-    const capCards = cap.map((C) => {
-      const row = (r, muted) => `<tr${muted ? ' class="muted"' : ""}><td>${esc(r.p.name)}${muted ? " (non-member, not counted above)" : ""}</td><td class="num">${usd2.format(r.start)}</td><td class="num">${r.contrib ? usd2.format(r.contrib) : "—"}</td><td class="num">${r.k1 ? signed2(r.k1) : "—"}</td><td class="num">${r.dist ? usd2.format(r.dist) : "—"}</td><td class="num"><strong>${usd2.format(r.end)}</strong></td></tr>`;
-      return `<div class="card"><div class="person-head"><h3>${C.y}${C.current ? " (so far)" : ""}</h3></div>
-        <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">Start of ${C.y}</th><th class="num">Money in</th><th class="num">K-1 net income</th><th class="num">Distributions</th><th class="num">${C.current ? "Now" : `End of ${C.y}`}</th></tr></thead>
-        <tbody>${C.members.map((r) => row(r, false)).join("")}${C.others.map((r) => row(r, true)).join("")}</tbody>
-        <tfoot><tr><td>Total, club members</td><td class="num">${usd2.format(C.total.start)}</td><td class="num">${usd2.format(C.total.contrib)}</td><td class="num">${signed2(C.total.k1)}</td><td class="num">${usd2.format(C.total.dist)}</td><td class="num">${usd2.format(C.total.end)}</td></tr></tfoot></table></div></div>`;
-    }).join("");
-    const undated = cap.length ? cap[0].undated : 0;
     return `<div class="stack">
-      <div class="section-head"><h2>Account values</h2>${admin ? '<button class="btn primary" type="button" data-add-acct>Add a year-end value</button>' : ""}</div>
-      <div class="card"><h3>Deal account values at year-end</h3><p class="muted" style="margin:4px 0 10px">What each club deal's statement shows at 12/31, with the change from the previous year recorded.</p>${valuesTable}</div>
-      <h3 style="margin:8px 0 0">Member capital accounts</h3>
-      <p class="muted" style="margin:-4px 0 0">Start of year, plus money put in during the year (including any upfront fee), plus K-1 net income (the K-1s split as described under K-1), minus the distributions received during the year, equals the end of the year. It's built from what is entered here, so it is an estimate to compare with your K-1s and statements.${undated ? ` The current year's distributions include ${usd2.format(undated)} received before dates were tracked, so the balance now matches Year-end's to-date figure.` : ""}</p>
-      ${cap.length ? capCards : '<div class="card"><p class="muted" style="margin:0">No Power Lunch Club investments yet.</p></div>'}</div>`;
+      <div class="section-head"><h2>Deal values</h2>${admin ? '<button class="btn primary" type="button" data-add-acct>Add a year-end value</button>' : ""}</div>
+      <div class="card"><h3>Deal account values at year-end</h3><p class="muted" style="margin:4px 0 10px">What each club deal's statement shows at 12/31, with the change from the previous year recorded. Member balances are under Year-end.</p>${valuesTable}</div></div>`;
   }
 
   function club() {
     const sec = ["yearend", "k1", "accounts"].includes(state.clubSection) ? state.clubSection : "yearend";
-    const tabs = [["yearend", "Year-end"], ["k1", "K-1"], ["accounts", "Accounts"]];
+    const tabs = [["yearend", "Year-end"], ["k1", "K-1"], ["accounts", "Deal values"]];
     const nav = `<div class="clubnav" role="radiogroup" aria-label="Club records">${tabs.map(([k, label]) => `<button type="button" role="radio" aria-checked="${sec === k}" data-club-sec="${k}">${label}</button>`).join("")}</div>`;
     return `<div class="stack">${nav}${sec === "k1" ? k1View() : sec === "accounts" ? accountsView() : yearend()}</div>`;
   }
