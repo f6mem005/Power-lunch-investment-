@@ -5,7 +5,7 @@ import { todayStr as today } from "./lib/dates.mts";
 import { cachedQuotes, getQuotes, validSymbol } from "./lib/prices.mts";
 import { applySplit, ratioOk, splitKey } from "./lib/splits.mts";
 import { KINDS, deleteAuth, deleteOne, ensureSeeded, getAuth, getOne, listAll, putAuth, putOne } from "./lib/store.mts";
-import type { AuthRecord, Deal, Holding, Person } from "./lib/store.mts";
+import type { AccountValue, AuthRecord, Deal, Holding, K1Line, K1Record, Person } from "./lib/store.mts";
 import { buildView } from "./lib/view.mts";
 import type { Viewer } from "./lib/view.mts";
 
@@ -138,6 +138,40 @@ const loggedTotal = (h: Holding) => round2((h.distLog ?? []).reduce((s, e) => s 
 const MAX_DIST_ENTRIES = 200;
 const usdText = (n: number) => "$" + n.toFixed(2);
 
+// ---- the club's K-1s and deal account values (admin enters them; club members read them)
+const taxYear = (v: unknown) => {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1990 || n > Number(today().slice(0, 4)) + 1) bad("Year must be a four-digit tax year");
+  return n;
+};
+const signedMoney = (v: unknown, name: string) => {
+  const n = Number(v);
+  if (v === "" || v === null || v === undefined || !Number.isFinite(n) || Math.abs(n) > 1e12) bad(`${name} must be a number`);
+  return Math.round(n * 100) / 100;
+};
+async function clubDeal(dealId: unknown) {
+  const d = await getOne<Deal>(KINDS.deal, String(dealId ?? ""));
+  if (!d || d.ownerId || d.channel !== "club") bad("Choose a Power Lunch Club deal");
+  return d!;
+}
+const MAX_K1_LINES = 40;
+function k1Lines(v: unknown): K1Line[] {
+  if (!Array.isArray(v)) bad("Add at least one income or expense line");
+  const lines: K1Line[] = [];
+  for (const raw of v as any[]) {
+    if (!raw || typeof raw !== "object") bad("Each line needs a type and an amount");
+    const type = raw.type === "expense" ? "expense" : raw.type === "income" ? "income" : bad("Each line must be income or expense");
+    if (raw.amount === "" || raw.amount === null || raw.amount === undefined) continue; // a blank line is left out
+    const amount = signedMoney(raw.amount, "Each amount");
+    if (amount === 0) continue; // blank or zero lines are simply left out
+    if (type === "expense" && amount < 0) bad("An expense can't be negative; enter a loss as negative income");
+    lines.push({ id: crypto.randomUUID().slice(0, 8), type, label: optStr(raw.label, 60) || (type === "income" ? "Income" : "Expense"), amount });
+  }
+  if (!lines.length) bad("Add at least one income or expense line with an amount");
+  if (lines.length > MAX_K1_LINES) bad(`A K-1 can have up to ${MAX_K1_LINES} lines`);
+  return lines;
+}
+
 const MAX_OWN_DEALS = 25; // per person, so nobody can fill the store or flood the price provider with tickers
 const OWN_DEAL_HINT = "This is a member's own deal. Change it under Manage > Members' own deals.";
 
@@ -163,11 +197,11 @@ export default async (req: Request) => {
   if (!session) return fail("Please sign in", 401);
 
   const loadView = async (viewer: Viewer) => {
-    const [people, deals, holdings] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding)]);
+    const [people, deals, holdings, k1s, acct] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), listAll<K1Record>(KINDS.k1), listAll<AccountValue>(KINDS.acct)]);
     // Prices only for deals this viewer can receive: the shared ones, their own, or (admin) all.
     const mayHave = (d: Deal) => !d.ownerId || viewer.kind === "admin" || d.ownerId === viewer.person.id;
     const quotes = await cachedQuotes(deals.filter(mayHave).map((d) => d.ticker).filter(Boolean) as string[]);
-    return buildView(viewer, people, deals, holdings, quotes);
+    return buildView(viewer, people, deals, holdings, quotes, k1s, acct);
   };
   // The admin can preview exactly what a given person sees (?as=<personId>).
   const viewerFor = async (): Promise<Viewer> => {
@@ -270,15 +304,69 @@ export default async (req: Request) => {
     // Everything below changes data and needs the admin passcode.
     if (!isAdmin) return fail("Admin access required", 403);
     if (resource === "export" && method === "GET") {
-      const [people, deals, holdings] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding)]);
+      const [people, deals, holdings, k1, accountValues] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), listAll<K1Record>(KINDS.k1), listAll<AccountValue>(KINDS.acct)]);
       const stamp = today();
-      return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), people, deals, holdings }, null, 2), {
+      return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), people, deals, holdings, k1, accountValues }, null, 2), {
         headers: { "content-type": "application/json", "cache-control": "no-store", "content-disposition": `attachment; filename="pari-passu-backup-${stamp}.json"` },
       });
     }
     if (notJson()) return fail("Expected JSON", 415);
     let body: any = {};
     if (method === "POST" || method === "PUT") body = await readBody();
+
+    // K-1s: one per club deal per tax year. Entered by the admin; shown to club members split across the deal's holders.
+    if (resource === "k1") {
+      if (method === "POST" && !id) {
+        const deal = await clubDeal(body.dealId);
+        const year = taxYear(body.year);
+        if ((await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === deal.id && r.year === year)) bad("A K-1 for that deal and year already exists. Edit it instead.");
+        const rec: K1Record = { id: newId(`k1-${deal.name}-${year}`), dealId: deal.id, year, lines: k1Lines(body.lines), note: optStr(body.note) };
+        await putOne(KINDS.k1, rec);
+        return json(rec, 201);
+      }
+      if (method === "PUT" && id) {
+        const rec = await getOne<K1Record>(KINDS.k1, id);
+        if (!rec) return fail("Not found", 404);
+        const deal = await clubDeal(body.dealId ?? rec.dealId);
+        const year = taxYear(body.year ?? rec.year);
+        if ((await listAll<K1Record>(KINDS.k1)).some((r) => r.id !== rec.id && r.dealId === deal.id && r.year === year)) bad("A K-1 for that deal and year already exists.");
+        rec.dealId = deal.id; rec.year = year; rec.lines = k1Lines(body.lines); rec.note = optStr(body.note);
+        await putOne(KINDS.k1, rec);
+        return json(rec);
+      }
+      if (method === "DELETE" && id) {
+        if (!(await getOne<K1Record>(KINDS.k1, id))) return fail("Not found", 404);
+        await deleteOne(KINDS.k1, id);
+        return json({ ok: true });
+      }
+    }
+
+    // A club deal's account value at a year-end, from its statement: one per deal per year.
+    if (resource === "accountvalues") {
+      if (method === "POST" && !id) {
+        const deal = await clubDeal(body.dealId);
+        const year = taxYear(body.year);
+        if ((await listAll<AccountValue>(KINDS.acct)).some((r) => r.dealId === deal.id && r.year === year)) bad("A value for that deal and year already exists. Edit it instead.");
+        const rec: AccountValue = { id: newId(`val-${deal.name}-${year}`), dealId: deal.id, year, value: money(body.value, "Account value"), note: optStr(body.note) };
+        await putOne(KINDS.acct, rec);
+        return json(rec, 201);
+      }
+      if (method === "PUT" && id) {
+        const rec = await getOne<AccountValue>(KINDS.acct, id);
+        if (!rec) return fail("Not found", 404);
+        const deal = await clubDeal(body.dealId ?? rec.dealId);
+        const year = taxYear(body.year ?? rec.year);
+        if ((await listAll<AccountValue>(KINDS.acct)).some((r) => r.id !== rec.id && r.dealId === deal.id && r.year === year)) bad("A value for that deal and year already exists.");
+        rec.dealId = deal.id; rec.year = year; rec.value = money(body.value, "Account value"); rec.note = optStr(body.note);
+        await putOne(KINDS.acct, rec);
+        return json(rec);
+      }
+      if (method === "DELETE" && id) {
+        if (!(await getOne<AccountValue>(KINDS.acct, id))) return fail("Not found", 404);
+        await deleteOne(KINDS.acct, id);
+        return json({ ok: true });
+      }
+    }
 
     if (resource === "people") {
       // Personal sign-in passcode for one person (admin sets or removes it; it is stored hashed and never shown again).
@@ -363,6 +451,8 @@ export default async (req: Request) => {
         const mine = (await listAll<Holding>(KINDS.holding)).filter((h) => h.dealId === id);
         if (mine.length && url.searchParams.get("cascade") !== "1") return fail("This deal still has holdings. Confirm deleting them too.", 409);
         for (const h of mine) await deleteOne(KINDS.holding, h.id);
+        for (const r of await listAll<K1Record>(KINDS.k1)) if (r.dealId === id) await deleteOne(KINDS.k1, r.id);
+        for (const r of await listAll<AccountValue>(KINDS.acct)) if (r.dealId === id) await deleteOne(KINDS.acct, r.id);
         await deleteOne(KINDS.deal, id);
         return json({ ok: true, holdingsDeleted: mine.length });
       }

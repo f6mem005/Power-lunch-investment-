@@ -35,7 +35,14 @@ export type Holding = {
 
 export type AuthRecord = { id: string; salt: string; hash: string; iter: number; ver: string; updatedAt: string };
 
-export const KINDS = { person: "people", deal: "deals", holding: "holdings" } as const;
+// The club's K-1 for one deal and tax year: income and expense lines (a loss is a negative income line). It is split across the
+// deal's holders by their share of the deal at year-end, on screen only; nothing per member is stored.
+export type K1Line = { id: string; type: "income" | "expense"; label: string; amount: number };
+export type K1Record = { id: string; dealId: string; year: number; lines: K1Line[]; note: string };
+// A deal's account value at a year-end (from its statement).
+export type AccountValue = { id: string; dealId: string; year: number; value: number; note: string };
+
+export const KINDS = { person: "people", deal: "deals", holding: "holdings", k1: "k1", acct: "acctvalues" } as const;
 
 // Strong consistency so an admin sees their own edits immediately.
 export const store = () => getStore({ name: "plc-data", consistency: "strong" });

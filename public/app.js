@@ -51,7 +51,7 @@
 
   const state = {
     scope: (() => { try { return localStorage.getItem("plc-scope") || ""; } catch { return ""; } })(),
-    role: null, me: null, previewOf: null, passcodes: {}, ownDeals: [], ownHoldings: [], priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
+    role: null, me: null, previewOf: null, passcodes: {}, k1: [], accountValues: [], clubSection: "yearend", ownDeals: [], ownHoldings: [], priceErrors: {}, adminPeople: [], quotes: {}, people: [], deals: [], holdings: [], d: null,
   };
 
   async function api(path, opts = {}) {
@@ -378,6 +378,174 @@
       <div class="card"><h2>All holdings</h2><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Person</th><th>Date</th><th class="num">Invested</th><th class="num">Distributions</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
   }
 
+  // ---------- Club: Year-end totals, K-1s and Accounts (club members and the admin) ----------
+  const clubHoldings = () => state.holdings.filter((h) => dealById(h.dealId)?.channel === "club");
+  const lineSum = (r, type) => r2(r.lines.filter((l) => l.type === type).reduce((s, l) => s + l.amount, 0));
+  const isClubAdmin = () => state.role === "admin";
+  const lastYear = () => new Date().getFullYear() - 1;
+
+  // Each K-1 belongs to the club. It is split across the deal's holders by their share of the money in that deal at 12/31 of the K-1's
+  // year (an estimate: the real split follows the partnership agreement, so confirm with your accountant). Nothing per member is stored.
+  function k1Data() {
+    const club = clubHoldings();
+    const perYear = new Map();   // year -> Map(personId -> { income, expenses })
+    const unsplit = [];          // K-1s for a year when the deal had no investors yet
+    for (const r of state.k1) {
+      const held = club.filter((h) => h.dealId === r.dealId && h.date <= `${r.year}-12-31`);
+      const total = held.reduce((s, h) => s + h.invested, 0);
+      if (!total) { unsplit.push(r); continue; }
+      const byPerson = new Map();
+      for (const h of held) byPerson.set(h.personId, (byPerson.get(h.personId) || 0) + h.invested);
+      const year = perYear.get(r.year) || new Map(), I = lineSum(r, "income"), E = lineSum(r, "expense");
+      for (const [pid, inv] of byPerson) {
+        const a = year.get(pid) || { income: 0, expenses: 0 };
+        a.income += (I * inv) / total; a.expenses += (E * inv) / total;
+        year.set(pid, a);
+      }
+      perYear.set(r.year, year);
+    }
+    for (const year of perYear.values()) for (const a of year.values()) { a.income = r2(a.income); a.expenses = r2(a.expenses); }
+    return { perYear, unsplit };
+  }
+
+  function k1View() {
+    const { perYear, unsplit } = k1Data();
+    const years = [...new Set(state.k1.map((r) => r.year))].sort((a, b) => b - a);
+    const add = isClubAdmin() ? '<button class="btn primary" type="button" data-add-k1>Add K-1 figures</button>' : "";
+    const intro = `<p class="muted" style="margin:-4px 0 0">The club's K-1 for each deal and year, split across the deal's holders by their share of the money in that deal at 12/31 of that year. That split is an estimate (the real one follows the partnership agreement), so confirm with your accountant. Each year shows that year on its own and the running total of that year plus all prior years.</p>`;
+    if (!years.length) return `<div class="stack"><div class="section-head"><h2>K-1 income and expenses</h2>${add}</div>${intro}<div class="card"><p class="muted" style="margin:0">No K-1 figures entered yet.${isClubAdmin() ? " Press Add K-1 figures after a deal sends its K-1." : ""}</p></div></div>`;
+    const net = (a) => r2((a?.income || 0) - (a?.expenses || 0));
+    const cumFor = (pid, y) => r2([...perYear.entries()].filter(([yy]) => yy <= y).reduce((s, [, m]) => s + net(m.get(pid)), 0));
+    const cards = years.map((y) => {
+      const m = perYear.get(y) || new Map();
+      const rowOf = (p) => { const a = m.get(p.id); return { p, income: a?.income || 0, expenses: a?.expenses || 0, net: net(a), cum: cumFor(p.id, y) }; };
+      const people = state.people.filter((p) => m.has(p.id)).map(rowOf);
+      const members = people.filter((r) => r.p.type === "member"), others = people.filter((r) => r.p.type !== "member");
+      const sum = (k) => r2(members.reduce((s, r) => s + r[k], 0));
+      const cell = (n) => (n ? signed2(n) : "—");
+      const row = (r, muted) => `<tr${muted ? ' class="muted"' : ""}><td>${esc(r.p.name)}${muted ? " (non-member, not counted above)" : ""}</td><td class="num">${r.income ? usd2.format(r.income) : "—"}</td><td class="num">${r.expenses ? usd2.format(r.expenses) : "—"}</td><td class="num">${cell(r.net)}</td><td class="num">${cell(r.cum)}</td></tr>`;
+      const recs = state.k1.filter((r) => r.year === y).sort((a, b) => (dealById(a.dealId)?.name || "").localeCompare(dealById(b.dealId)?.name || ""));
+      const recHtml = recs.map((r) => `<li><div class="person-head" style="margin:0"><span><strong>${esc(dealById(r.dealId)?.name || "Deal")}</strong> · income ${usd2.format(lineSum(r, "income"))} · expenses ${usd2.format(lineSum(r, "expense"))}</span>${isClubAdmin() ? `<button class="btn small" type="button" data-edit-k1="${esc(r.id)}">Edit</button>` : ""}</div>
+        <details><summary>${r.lines.length} line${r.lines.length === 1 ? "" : "s"}</summary><ul>${r.lines.map((l) => `<li>${esc(l.label)} (${l.type}): ${usd2.format(l.amount)}</li>`).join("")}</ul>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}</details></li>`).join("");
+      return `<div class="card"><div class="person-head"><h3>${y}${y === new Date().getFullYear() ? " (so far)" : ""}</h3></div>
+        <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">K-1 income ${y}</th><th class="num">K-1 expenses ${y}</th><th class="num">Net ${y}</th><th class="num">Net through ${y}</th></tr></thead>
+        <tbody>${members.map((r) => row(r, false)).join("")}${others.map((r) => row(r, true)).join("")}</tbody>
+        <tfoot><tr><td>Total, club members</td><td class="num">${usd2.format(sum("income"))}</td><td class="num">${usd2.format(sum("expenses"))}</td><td class="num">${cell(sum("net"))}</td><td class="num">${cell(sum("cum"))}</td></tr></tfoot></table></div>
+        <ul class="k1list">${recHtml}</ul></div>`;
+    });
+    const orphan = unsplit.length ? `<p class="banner">${unsplit.map((r) => `${esc(dealById(r.dealId)?.name || "A deal")} ${r.year}`).join(", ")}: no investors in that deal by 12/31 of the year, so ${unsplit.length === 1 ? "its K-1 can't" : "their K-1s can't"} be split across members.</p>` : "";
+    return `<div class="stack"><div class="section-head"><h2>K-1 income and expenses</h2>${add}</div>${intro}${orphan}${cards.join("")}</div>`;
+  }
+  const signed2 = (n) => `${n < 0 ? "−" : ""}${usd2.format(Math.abs(n))}`;
+
+  // Each member's capital account in the club: start of year + money put in + K-1 net income − distributions = end of year.
+  function capitalData() {
+    const ye = yearEndData().slice().reverse();   // oldest first
+    const { perYear } = k1Data();
+    const ends = new Map();                       // personId -> balance at the end of the previous year
+    const out = [];
+    for (const Y of ye) {
+      const k = perYear.get(Y.y) || new Map();
+      const rowFor = (r) => {
+        const a = k.get(r.p.id), start = ends.get(r.p.id) || 0, k1 = r2((a?.income || 0) - (a?.expenses || 0));
+        const end = r2(start + r.during + k1 - r.distDuring);
+        ends.set(r.p.id, end);
+        return { p: r.p, start, contrib: r.during, k1, dist: r.distDuring, end };
+      };
+      const members = Y.members.map(rowFor), others = Y.others.map(rowFor);
+      const tot = (key) => r2(members.reduce((s, r) => s + r[key], 0));
+      out.push({ y: Y.y, current: Y.current, members, others, total: { start: tot("start"), contrib: tot("contrib"), k1: tot("k1"), dist: tot("dist"), end: tot("end") }, undated: Y.total.undated });
+    }
+    return out.reverse();                         // newest first
+  }
+
+  function accountsView() {
+    const admin = isClubAdmin();
+    const years = [...new Set(state.accountValues.map((v) => v.year))].sort((a, b) => b - a);
+    const dealIds = [...new Set(state.accountValues.map((v) => v.dealId))];
+    const names = (id) => dealById(id)?.name || "Deal";
+    const valuesTable = !years.length
+      ? `<p class="muted" style="margin:0">No year-end account values entered yet.${admin ? " Press Add a year-end value to record what a deal's statement shows at 12/31." : ""}</p>`
+      : `<div class="table-wrap"><table><thead><tr><th>Deal</th>${years.map((y) => `<th class="num">12/31/${y}</th>`).join("")}</tr></thead><tbody>${dealIds
+          .slice().sort((a, b) => names(a).localeCompare(names(b)))
+          .map((id) => `<tr><td>${esc(names(id))}</td>${years.map((y) => {
+            const v = state.accountValues.find((x) => x.dealId === id && x.year === y);
+            if (!v) return '<td class="num muted">—</td>';
+            const prev = state.accountValues.filter((x) => x.dealId === id && x.year < y).sort((a, b) => b.year - a.year)[0];
+            const delta = prev ? v.value - prev.value : null;
+            const change = prev ? `<div class="${cls(delta)}" style="font-size:12px">${delta >= 0 ? "+" : "−"}${usd0.format(Math.abs(delta))}${prev.value ? ` (${delta >= 0 ? "+" : "−"}${(Math.abs(delta / prev.value) * 100).toFixed(1)}%)` : ""} vs ${prev.year}</div>` : "";
+            const val = admin ? `<button class="btn small ghost" type="button" data-edit-acct="${esc(v.id)}" title="${esc(v.note || "Edit")}">${usd0.format(v.value)}</button>` : `<span title="${esc(v.note || "")}">${usd0.format(v.value)}</span>`;
+            return `<td class="num">${val}${change}</td>`;
+          }).join("")}</tr>`).join("")}</tbody></table></div>`;
+    const cap = capitalData();
+    const capCards = cap.map((C) => {
+      const row = (r, muted) => `<tr${muted ? ' class="muted"' : ""}><td>${esc(r.p.name)}${muted ? " (non-member, not counted above)" : ""}</td><td class="num">${usd2.format(r.start)}</td><td class="num">${r.contrib ? usd2.format(r.contrib) : "—"}</td><td class="num">${r.k1 ? signed2(r.k1) : "—"}</td><td class="num">${r.dist ? usd2.format(r.dist) : "—"}</td><td class="num"><strong>${usd2.format(r.end)}</strong></td></tr>`;
+      return `<div class="card"><div class="person-head"><h3>${C.y}${C.current ? " (so far)" : ""}</h3></div>
+        <div class="table-wrap"><table><thead><tr><th>Member</th><th class="num">Start of ${C.y}</th><th class="num">Money in</th><th class="num">K-1 net income</th><th class="num">Distributions</th><th class="num">${C.current ? "Now" : `End of ${C.y}`}</th></tr></thead>
+        <tbody>${C.members.map((r) => row(r, false)).join("")}${C.others.map((r) => row(r, true)).join("")}</tbody>
+        <tfoot><tr><td>Total, club members</td><td class="num">${usd2.format(C.total.start)}</td><td class="num">${usd2.format(C.total.contrib)}</td><td class="num">${signed2(C.total.k1)}</td><td class="num">${usd2.format(C.total.dist)}</td><td class="num">${usd2.format(C.total.end)}</td></tr></tfoot></table></div></div>`;
+    }).join("");
+    const undated = cap.length ? cap[0].undated : 0;
+    return `<div class="stack">
+      <div class="section-head"><h2>Account values</h2>${admin ? '<button class="btn primary" type="button" data-add-acct>Add a year-end value</button>' : ""}</div>
+      <div class="card"><h3>Deal account values at year-end</h3><p class="muted" style="margin:4px 0 10px">What each club deal's statement shows at 12/31, with the change from the previous year recorded.</p>${valuesTable}</div>
+      <h3 style="margin:8px 0 0">Member capital accounts</h3>
+      <p class="muted" style="margin:-4px 0 0">Start of year, plus money put in during the year (including any upfront fee), plus K-1 net income (the K-1s split as described under K-1), minus the distributions received during the year, equals the end of the year. It's built from what is entered here, so it is an estimate to compare with your K-1s and statements.${undated ? ` ${usd2.format(undated)} of distributions have no date yet and are left out.` : ""}</p>
+      ${cap.length ? capCards : '<div class="card"><p class="muted" style="margin:0">No Power Lunch Club investments yet.</p></div>'}</div>`;
+  }
+
+  function club() {
+    const sec = ["yearend", "k1", "accounts"].includes(state.clubSection) ? state.clubSection : "yearend";
+    const tabs = [["yearend", "Year-end"], ["k1", "K-1"], ["accounts", "Accounts"]];
+    const nav = `<div class="clubnav" role="radiogroup" aria-label="Club records">${tabs.map(([k, label]) => `<button type="button" role="radio" aria-checked="${sec === k}" data-club-sec="${k}">${label}</button>`).join("")}</div>`;
+    return `<div class="stack">${nav}${sec === "k1" ? k1View() : sec === "accounts" ? accountsView() : yearend()}</div>`;
+  }
+
+  // The K-1 entry window: a deal, a year, and any number of income / expense lines (a loss is a negative income line).
+  function editK1(id) {
+    const r = id ? state.k1.find((x) => x.id === id) : null;
+    const clubDeals = state.deals.filter((d) => d.channel === "club");
+    if (!clubDeals.length) { alert("Add a Power Lunch Club deal first."); return; }
+    const lines = r ? r.lines : [{ type: "income", label: "Ordinary income", amount: "" }, { type: "expense", label: "Expenses", amount: "" }];
+    let n = 0;
+    const row = (l) => { const i = n++; return `<div class="k1row"><select class="k1t" name="t${i}" aria-label="Line type"><option value="income"${l.type === "income" ? " selected" : ""}>Income</option><option value="expense"${l.type === "expense" ? " selected" : ""}>Expense</option></select><input class="k1l" name="l${i}" maxlength="60" placeholder="e.g. Interest" aria-label="Line description" value="${esc(l.label || "")}"><input class="k1a" name="a${i}" type="number" step="0.01" inputmode="decimal" placeholder="Amount" aria-label="Amount" value="${l.amount === "" ? "" : esc(String(l.amount))}"></div>`; };
+    openDialog(
+      `<h2>${r ? "Edit K-1 figures" : "Add K-1 figures"}</h2>
+      <div class="form-grid">
+        <div><label for="k-deal">Deal</label><select id="k-deal" name="dealId">${options(clubDeals, r?.dealId)}</select></div>
+        <div><label for="k-year">Tax year</label><input id="k-year" name="year" type="number" min="1990" max="${lastYear() + 2}" step="1" value="${r?.year ?? lastYear()}" required></div>
+      </div>
+      <p class="muted" style="margin:10px 0 4px">Income and expense lines from the K-1. Enter a loss as negative income. Blank lines are ignored.</p>
+      <div id="k1rows">${lines.map(row).join("")}</div>
+      <button class="btn small" type="button" id="k1more">+ Add a line</button>
+      <label for="k-note">Note (optional)</label><input id="k-note" name="note" maxlength="500" value="${esc(r?.note || "")}">`,
+      (f) => {
+        const out = [];
+        for (const key of Object.keys(f)) { const m = /^a(\d+)$/.exec(key); if (m) out.push({ type: f["t" + m[1]], label: f["l" + m[1]], amount: f[key] }); }
+        return api(r ? `/api/k1/${id}` : "/api/k1", { method: r ? "PUT" : "POST", body: { dealId: f.dealId, year: f.year, note: f.note, lines: out } });
+      },
+      r ? { label: "Delete K-1", run: async () => { if (!confirm("Delete this K-1? This can't be undone.")) return false; await api(`/api/k1/${id}`, { method: "DELETE" }); return true; } } : undefined,
+    );
+    $("#k1more", dlg).onclick = () => { $("#k1rows", dlg).insertAdjacentHTML("beforeend", row({ type: "income", label: "", amount: "" })); };
+  }
+
+  function editAcct(id) {
+    const r = id ? state.accountValues.find((x) => x.id === id) : null;
+    const clubDeals = state.deals.filter((d) => d.channel === "club");
+    if (!clubDeals.length) { alert("Add a Power Lunch Club deal first."); return; }
+    openDialog(
+      `<h2>${r ? "Edit year-end value" : "Add a year-end value"}</h2>
+      <div class="form-grid">
+        <div><label for="v-deal">Deal</label><select id="v-deal" name="dealId">${options(clubDeals, r?.dealId)}</select></div>
+        <div><label for="v-year">At 12/31 of</label><input id="v-year" name="year" type="number" min="1990" max="${lastYear() + 2}" step="1" value="${r?.year ?? lastYear()}" required></div>
+        <div><label for="v-val">Account value ($)</label><input id="v-val" name="value" type="number" min="0" step="0.01" inputmode="decimal" value="${r ? esc(String(r.value)) : ""}" required></div>
+      </div>
+      <label for="v-note">Source or note (optional)</label><input id="v-note" name="note" maxlength="500" value="${esc(r?.note || "")}" placeholder="e.g. Q4 statement">`,
+      (f) => api(r ? `/api/accountvalues/${id}` : "/api/accountvalues", { method: r ? "PUT" : "POST", body: { dealId: f.dealId, year: f.year, value: f.value, note: f.note } }),
+      r ? { label: "Delete value", run: async () => { if (!confirm("Delete this value? This can't be undone.")) return false; await api(`/api/accountvalues/${id}`, { method: "DELETE" }); return true; } } : undefined,
+    );
+  }
+
   // ---------- My deals: deals a person adds for themselves; private to them and the admin ----------
   function mydeals() {
     const adminAll = state.role === "admin" && !state.previewOf;
@@ -631,7 +799,7 @@
 
   // ---------- shell ----------
   const view = $("#view");
-  const views = { overview, people, deals, yearend, mydeals, admin };
+  const views = { overview, people, deals, club, mydeals, admin };
   const isAdminSession = () => state.role === "admin" || !!state.previewOf;
   const canYearEnd = () => state.role === "admin" || state.me?.type === "member";
   function allowedScopes() {
@@ -641,15 +809,15 @@
   }
   function render() {
     const [rawTab, focusId] = (location.hash || "#overview").slice(1).split("/");
-    let tab = rawTab;
-    if (!views[tab] || (tab === "admin" && state.role !== "admin") || (tab === "yearend" && !canYearEnd())) tab = "overview";
+    let tab = rawTab === "yearend" ? "club" : rawTab;   // #yearend was the old name of this tab
+    if (!views[tab] || (tab === "admin" && state.role !== "admin") || (tab === "club" && !canYearEnd())) tab = "overview";
     const scopes = allowedScopes();
     if (!scopes[state.scope]) { state.scope = Object.keys(scopes)[0]; derive(); }
     const adminOwn = tab === "mydeals" && state.role === "admin" && !state.previewOf;
     document.querySelectorAll("#tabs a").forEach((a) => (a.dataset.tab === tab || (adminOwn && a.dataset.tab === "admin") ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
     $("#adminTab").hidden = state.role !== "admin";
     $("#addInvBtn").hidden = state.role !== "admin";
-    document.querySelector('#tabs a[data-tab="yearend"]').hidden = !canYearEnd();
+    document.querySelector('#tabs a[data-tab="club"]').hidden = !canYearEnd();
     document.querySelector('#tabs a[data-tab="mydeals"]').hidden = state.role === "admin" && !state.previewOf; // the admin opens these from Manage, so the tab bar keeps its five tabs
     $("#roleBadge").textContent = state.role === "admin" ? "Admin" : state.me ? `Signed in as ${state.me.name}` : "";
     const sel = $("#previewSel");
@@ -662,7 +830,7 @@
     if (state.previewOf) bar.innerHTML = `Previewing exactly what <strong>${esc(state.me?.name || "this person")}</strong> sees. Read-only. <button class="btn small" type="button" data-exit-preview>Back to admin view</button>`;
     const keys = Object.keys(scopes);
     $("#scopeBar").innerHTML = `<span class="muted">Show</span>${keys.map((k) => `<button type="button" role="radio" aria-checked="${state.scope === k}" data-scope="${k}">${esc(scopes[k])}</button>`).join("")}`;
-    $("#scopeBar").hidden = tab === "yearend" || tab === "mydeals" || keys.length < 2;
+    $("#scopeBar").hidden = tab === "club" || tab === "mydeals" || keys.length < 2;
     view.innerHTML = views[tab]();
     // Arrived from a link on the Overview: scroll to that deal/person and flash it once (not again on later refreshes).
     if (focusId && state.focusShown !== location.hash) {
@@ -710,7 +878,7 @@
 
   async function refresh(afterPrices = false, soft = false) {
     const data = await api(`/api/data${state.previewOf ? `?as=${encodeURIComponent(state.previewOf)}` : ""}`);
-    Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, ownDeals: data.ownDeals || [], ownHoldings: data.ownHoldings || [], quotes: data.quotes || {} });
+    Object.assign(state, { role: data.role, me: data.me, people: data.people, deals: data.deals, holdings: data.holdings, ownDeals: data.ownDeals || [], ownHoldings: data.ownHoldings || [], k1: data.k1 || [], accountValues: data.accountValues || [], quotes: data.quotes || {} });
     if (data.role === "admin") Object.assign(state, { adminPeople: data.people, passcodes: data.passcodes || {} });
     if (!state.scope || !allowedScopes()[state.scope]) state.scope = Object.keys(allowedScopes())[0];
     derive();
@@ -826,6 +994,11 @@
     if (t.dataset.wiz === "add") window.PLC.wizard.addInvestment();
     if (t.dataset.wiz === "complete") window.PLC.wizard.completeDetails();
     if (t.hasAttribute("data-csv-yearend")) yearEndCsv();
+    if (t.dataset.clubSec) { state.clubSection = t.dataset.clubSec; render(); }
+    if (t.hasAttribute("data-add-k1")) editK1(null);
+    if (t.dataset.editK1) editK1(t.dataset.editK1);
+    if (t.hasAttribute("data-add-acct")) editAcct(null);
+    if (t.dataset.editAcct) editAcct(t.dataset.editAcct);
     if (t.dataset.editOwn) editDeal(t.dataset.editOwn, true);
     if (t.hasAttribute("data-add-own")) addOwnDeal();
     if (t.dataset.editDeal) editDeal(t.dataset.editDeal);

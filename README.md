@@ -36,8 +36,8 @@ Enforced on the server (the browser is only sent what the person may see):
 |---|---|
 | Admin | Everything, and can edit. "Preview as <person>" shows exactly what that person sees. |
 | Anyone | Every holder of any deal they hold a stake in, club or individual (you see who invested alongside you). Nothing from deals they aren't in. |
-| Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Year-end tab. |
-| Non-member | Only the deals they hold. No other club deals, no Year-end tab. |
+| Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Club tab (Year-end totals, K-1s and account values). |
+| Non-member | Only the deals they hold. No other club deals, no Club tab. |
 
 ### My deals (private deals a person adds for themselves)
 
@@ -105,9 +105,27 @@ the new share count, multiplies the count and logs the split. The same window sh
 
 Each holding keeps one running total of distributions (used for value, carry and gain). In **Edit holding** the admin can also add each distribution with the date it was received. Adding one raises the total by its amount, removing one lowers it, and the total can never be set below the dated entries. Anything already in the total without a date is shown as "received before dates were tracked".
 
+## The Club tab (club members and the admin only)
+
+Everything that applies only to the Power Lunch Club lives in one tab, **Club**, with three sections: **Year-end**, **K-1** and **Accounts**.
+Non-members never see the tab or any of its data (the server doesn't send it). The old `#yearend` link still opens it.
+
+### K-1 income and expenses
+
+The admin enters the club's K-1 for each club deal and tax year as income and expense lines (a loss is negative income); there is one K-1 per deal per year.
+The app splits it across the deal's holders by their share of the money in that deal at 12/31 of that year, and shows each year on its own and the
+running total of that year plus all prior years. The split is an estimate (the real one follows the partnership agreement), and nothing per member
+is stored, so correcting a K-1 or an investment updates everything.
+
+### Account values
+
+- **Deal account values:** the admin records what a club deal's statement shows at 12/31; the tab shows each year and the change from the previous year recorded.
+- **Member capital accounts:** for each year, start of year + money put in (including any upfront fee) + K-1 net income - distributions received that year = end of year.
+  Built from what is entered, so it is an estimate to compare with your K-1s and statements. Distributions without a date are left out and called out.
+
 ## Year-end totals
 
-The Year-end tab shows, for Power Lunch Club deals only (Individual deals are excluded), what each club member
+The Year-end section shows, for Power Lunch Club deals only (Individual deals are excluded), what each club member
 had invested in total at each 12/31 (and "to date" for the current year), their % of the club, and what went in
 during the year. Amounts are cost by investment date, including upfront fees. Each year's card also shows the distributions
 received during that year and the running total through it (this year plus all prior years), built from the dated distributions

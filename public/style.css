@@ -157,6 +157,14 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
 .login-card .btn { width: 100%; margin-top: 6px; }
 .login-card .showpass { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; font-weight: 400; cursor: pointer; }
 .login-card .showpass input { width: auto; margin: 0; }
+.clubnav { display: flex; gap: 6px; flex-wrap: wrap; }
+.clubnav button { font: inherit; font-weight: 600; padding: 6px 14px; border-radius: 99px; cursor: pointer; border: 1px solid var(--axis); background: var(--surface); color: var(--ink-2); }
+.clubnav button[aria-checked="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.k1list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.k1list details { margin-top: 4px; }
+.k1row { display: grid; grid-template-columns: 96px 1fr 120px; gap: 8px; margin-bottom: 8px; }
+.k1row select, .k1row input { margin: 0; min-width: 0; }
+@media (max-width: 480px) { .clubnav { width: 100%; } .clubnav button { flex: 1 1 auto; text-align: center; } .k1row { grid-template-columns: 1fr 1fr; } .k1row .k1l { grid-column: 1 / -1; order: 3; } }
 .distlist { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
 .distlist li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
