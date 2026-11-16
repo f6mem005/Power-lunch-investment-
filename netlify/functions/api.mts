@@ -138,7 +138,7 @@ const loggedTotal = (h: Holding) => round2((h.distLog ?? []).reduce((s, e) => s 
 const MAX_DIST_ENTRIES = 200;
 const usdText = (n: number) => "$" + n.toFixed(2);
 
-// ---- the club's K-1s (admin enters them; club members read them)
+// ---- K-1s for shared deals, club or individual (the admin enters them; club members read the club's, holders of an individual deal get their own share)
 const taxYear = (v: unknown) => {
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1990 || n > Number(today().slice(0, 4))) bad("Year must be a four-digit tax year, not in the future");
@@ -149,9 +149,9 @@ const signedMoney = (v: unknown, name: string) => {
   if (v === "" || v === null || v === undefined || !Number.isFinite(n) || Math.abs(n) > 1e12) bad(`${name} must be a number`);
   return Math.round(n * 100) / 100;
 };
-async function clubDeal(dealId: unknown) {
+async function k1Deal(dealId: unknown) {
   const d = await getOne<Deal>(KINDS.deal, String(dealId ?? ""));
-  if (!d || d.ownerId || d.channel !== "club") bad("Choose a Power Lunch Club deal");
+  if (!d || d.ownerId) bad("Choose a Power Lunch Club or individual deal");   // a member's own deal (My deals) is private and never has K-1s here
   return d!;
 }
 const MAX_K1_LINES = 40;
@@ -197,8 +197,8 @@ export default async (req: Request) => {
   if (!session) return fail("Please sign in", 401);
 
   const loadView = async (viewer: Viewer, withClubRecords = true) => {
-    const wantsClub = withClubRecords && (viewer.kind === "admin" || viewer.person.type === "member");   // non-members never receive the club's K-1s
-    const [people, deals, holdings, k1s] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), wantsClub ? listAll<K1Record>(KINDS.k1) : Promise.resolve([] as K1Record[])]);
+    const wantsK1 = withClubRecords;   // view.mts decides who receives what: the admin all, members the club's, a holder only their own share of an individual deal
+    const [people, deals, holdings, k1s] = await Promise.all([listAll<Person>(KINDS.person), listAll<Deal>(KINDS.deal), listAll<Holding>(KINDS.holding), wantsK1 ? listAll<K1Record>(KINDS.k1) : Promise.resolve([] as K1Record[])]);
     // Prices only for deals this viewer can receive: the shared ones, their own, or (admin) all.
     const mayHave = (d: Deal) => !d.ownerId || viewer.kind === "admin" || d.ownerId === viewer.person.id;
     const quotes = await cachedQuotes(deals.filter(mayHave).map((d) => d.ticker).filter(Boolean) as string[]);
@@ -315,10 +315,11 @@ export default async (req: Request) => {
     let body: any = {};
     if (method === "POST" || method === "PUT") body = await readBody();
 
-    // K-1s: one per club deal per tax year. Entered by the admin; shown to club members split across the deal's holders.
+    // K-1s: one per deal per tax year. Entered by the admin; shown to club members (club deals) split across the deal's holders, and to a
+    // holder of an individual deal as just their own share.
     if (resource === "k1") {
       if (method === "POST" && !id) {
-        const deal = await clubDeal(body.dealId);
+        const deal = await k1Deal(body.dealId);
         const year = taxYear(body.year);
         const rec: K1Record = { id: `k1-${deal.id}-${year}`, dealId: deal.id, year, lines: k1Lines(body.lines), note: optStr(body.note) };   // the id is the deal and year, so there can only ever be one
         if (await getOne<K1Record>(KINDS.k1, rec.id)) bad("A K-1 for that deal and year already exists. Edit it instead.");
@@ -328,7 +329,7 @@ export default async (req: Request) => {
       if (method === "PUT" && id) {
         const rec = await getOne<K1Record>(KINDS.k1, id);
         if (!rec) return fail("Not found", 404);
-        const deal = await clubDeal(body.dealId ?? rec.dealId);
+        const deal = await k1Deal(body.dealId ?? rec.dealId);
         const year = taxYear(body.year ?? rec.year);
         const moved = `k1-${deal.id}-${year}`;
         if (moved !== rec.id && (await getOne<K1Record>(KINDS.k1, moved))) bad("A K-1 for that deal and year already exists.");
@@ -419,9 +420,9 @@ export default async (req: Request) => {
         if (!sameName(newName, d.name)) await assertUniqueDealName(newName, d.id); // only when the name is actually being changed
         d.name = newName;
         const nextChannel = body.channel === undefined ? d.channel : body.channel === "individual" ? "individual" : "club";   // not sent = unchanged
-        if (d.channel === "club" && nextChannel !== "club") {
-          const hasClubRecords = (await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === d.id);
-          if (hasClubRecords) bad("This deal has K-1s recorded under the Club tab. Delete those first, or keep it a club deal.");
+        if (nextChannel !== d.channel) {
+          const hasK1s = (await listAll<K1Record>(KINDS.k1)).some((r) => r.dealId === d.id);
+          if (hasK1s) bad("This deal has K-1s recorded. Delete those first, or keep it where it is: moving it between Club and Individual would change who sees them.");
         }
         d.channel = nextChannel;
         applyDealFields(d, body);

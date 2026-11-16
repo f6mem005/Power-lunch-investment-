@@ -8,6 +8,7 @@
 // only, nothing revealing others' amounts) can no longer be reached by this rule; it is kept as a safety net so a
 // future, stricter rule cannot leak by accident.
 import type { Quote } from "./prices.mts";
+import { k1Split } from "./k1split.mts";
 import type { Deal, Holding, K1Record, Person } from "./store.mts";
 
 export type Viewer = { kind: "admin" } | { kind: "person"; person: Person };
@@ -82,11 +83,20 @@ export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], al
   const allDealById = new Map(allDeals.map((d) => [d.id, d]));
   const ownHoldings = allHoldings.filter((h) => ownIds.has(h.dealId)).map((h) => rowOf(h, allDealById.get(h.dealId)!, true));
 
-  // The club's K-1s are club records: the admin and club members get them, for Power Lunch Club deals
-  // only (never a private deal), and nobody else does, whatever stake they hold.
-  const seesClubRecords = isAdmin || me?.type === "member";
+  // K-1s. The club's are club records: the admin and club members get them, for Power Lunch Club deals only. The admin also gets the
+  // K-1s of individual deals (whole records, for entering and checking them). Nobody else ever receives an individual deal's K-1:
+  // a holder of that deal gets only their own share of it (`myK1`), never its lines, total or note or anyone else's share.
+  // A deal a person added for themselves never has K-1s here, and a K-1 for one would be ignored.
   const clubDealIds = new Set(deals.filter((d) => d.channel === "club").map((d) => d.id));
-  const k1 = seesClubRecords ? allK1.filter((r) => clubDealIds.has(r.dealId)) : [];
+  const k1 = isAdmin ? allK1.filter((r) => sharedIds.has(r.dealId)) : me?.type === "member" ? allK1.filter((r) => clubDealIds.has(r.dealId)) : [];
+  const myK1 = me && !isAdmin
+    ? allK1.flatMap((r) => {
+        const d = dealById.get(r.dealId);
+        if (!d || d.channel !== "individual" || !holders.get(d.id)?.has(me.id)) return [];
+        const mine = k1Split(r, holdings.filter((h) => h.dealId === d.id))?.get(me.id);
+        return mine ? [{ dealId: d.id, year: r.year, income: mine.income, expenses: mine.expenses }] : [];
+      })
+    : [];
 
   const peopleIds = new Set(rows.map((r) => r.personId));
   if (me) {
@@ -111,6 +121,7 @@ export function buildView(viewer: Viewer, people: Person[], allDeals: Deal[], al
     ownDeals,
     ownHoldings,
     k1,
+    myK1,
     quotes: visibleQuotes,
   };
 }

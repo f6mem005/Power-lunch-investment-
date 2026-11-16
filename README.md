@@ -35,7 +35,7 @@ Enforced on the server (the browser is only sent what the person may see):
 | Signed in as | Sees |
 |---|---|
 | Admin | Everything, and can edit. "Preview as <person>" shows exactly what that person sees. |
-| Anyone | Every holder of any deal they hold a stake in, club or individual (you see who invested alongside you). Nothing from deals they aren't in. |
+| Anyone | Every holder of any deal they hold a stake in, club or individual (you see who invested alongside you). Nothing from deals they aren't in. For an individual deal's K-1, only their own share of it. |
 | Club member | Additionally, every holding in every Power Lunch Club deal (all members' contributions) and the Club tab (Year-end totals and capital accounts, and K-1s). |
 | Non-member | Only the deals they hold. No other club deals, no Club tab. |
 
@@ -116,6 +116,12 @@ The admin enters the club's K-1 for each club deal and tax year as income and ex
 The app splits it across the deal's holders by their share of the money in that deal at 12/31 of that year, and shows each year on its own and the
 running total of that year plus all prior years. The split is an estimate (the real one follows the partnership agreement), and nothing per member
 is stored, so correcting a K-1 or an investment updates everything.
+
+**Individual deals can have K-1s too.** The admin enters them in the same window (the deal is marked "individual"). They are listed under their own
+**Individual deals** heading in the K-1 section, split across that deal's holders the same way, and are **not** part of the club's Year-end totals or
+capital accounts. Only the admin sees the K-1 itself. A holder of the deal gets only their own share (income, expenses, net per year), shown on the Deals
+tab under that deal; the server sends them nothing else (not the lines, total or note, and not what the other holders got). Club members who don't hold
+the deal, and everyone else, receive nothing about it. (A holder sees every holder's amount in the deal, so they could work out the K-1's total from their own share; that is by design.) A deal that has K-1s can't be moved between Club and Individual until its K-1s are deleted.
 
 There is no longer a Deal values section. Year-end values entered while it existed are no longer shown or editable; they stay in the store, appear in the backup export under `accountValues`, and are deleted with their deal.
 
