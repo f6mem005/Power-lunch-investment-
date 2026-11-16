@@ -237,7 +237,7 @@
         const hs = state.d.holdings.filter((h) => h.dealId === d.id).sort((a, b) => b.invested - a.invested);
         const gain = dd.net + dd.dist - dd.invested;
         return `<div class="card" id="deal-${esc(d.id)}"><div class="person-head"><h3>${esc(d.name)} ${channelPill(d)}${d.ticker ? ` <span class="pill">${esc(d.ticker)}${d.price ? ` ${usd2.format(d.price)}` : ""}</span>` : ""}</h3>
-          <span>${state.role === "admin" ? `<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
+          <span>${state.role === "admin" ? `${d.channel === "individual" ? `<button class="btn small" data-add-deal-k1="${esc(d.id)}">Add K-1</button> ` : ""}<button class="btn small" data-edit-deal="${esc(d.id)}">Edit deal</button>` : ""}</span></div>
           <p class="muted" style="margin:0 0 10px">${d.sharesHeld ? `Shares held: <strong>${fmtShares(d.sharesHeld)}${d.ticker ? ` ${esc(d.ticker)}` : ""}</strong> · ` : d.ticker ? "Shares held: <strong>not entered yet</strong> · " : ""}Invested <strong>${money(dd.invested)}</strong> · Net value <strong>${money(dd.net)}</strong> ${basisBadge(dd)} · <span class="${cls(gain)}">${signed(gain)} (${gainPct(gain, dd.invested)}) net of carry</span></p>
           <p class="muted" style="margin:0 0 10px">${termsText(d) ? `Terms: ${esc(termsText(d))}. ` : "Fee and carry terms not entered. "}Gross value ${money(dd.value)} − carry ${money(dd.carry)}${dd.fee ? ` · upfront fees paid ${money(dd.fee)} (inside the amount invested)` : ""}</p>
           ${d.needsShares ? `<p class="banner">Ticker ${esc(d.ticker)} is set but the share count isn't, so this deal is not priced live yet.${d.priceError || state.priceErrors[d.ticker] ? ` (Price lookup: ${esc(d.priceError || state.priceErrors[d.ticker])})` : ""}</p>` : ""}
@@ -246,6 +246,7 @@
           ${state.role === "admin" && !state.previewOf ? splitNotice(d) : ""}
           ${d.notes ? `<p class="muted">${esc(d.notes)}</p>` : ""}
           ${myK1Note(d)}
+          ${dealK1Panel(d)}
           <div class="table-wrap"><table><thead><tr><th>Holder</th><th>Date</th><th class="num">Invested</th>${d.partial ? "" : '<th class="num">Share</th>'}${d.sharesHeld && !d.partial ? '<th class="num">Shares</th>' : ""}<th class="num">Value (net)</th><th class="num">Distributions</th>${state.role === "admin" ? "<th></th>" : ""}</tr></thead><tbody>
           ${hs.map((h) => `<tr><td><i class="sw" style="background:${color(h.personId)}"></i>${esc(personById(h.personId)?.name)}${personById(h.personId)?.type === "non-member" ? ' <span class="pill">non-member</span>' : ""}</td><td>${dateFmt(h.date)}</td><td class="num">${money(h.invested)}</td>${d.partial ? "" : `<td class="num">${pct(h.share)}</td>`}${d.sharesHeld && !d.partial ? `<td class="num">${fmtShares(h.shares)}</td>` : ""}<td class="num"><span ${tipAttr(valueTip(h))}>${money(h.value)}</span></td><td class="num">${money(h.distributions)}</td>${state.role === "admin" ? `<td class="num"><button class="btn small" data-edit-holding="${esc(h.id)}">Edit</button></td>` : ""}</tr>`).join("")}
           </tbody></table></div></div>`;
@@ -436,11 +437,10 @@
   function k1View() {
     const { perYear, unsplit } = k1Data();
     const clubK1 = state.k1.filter((r) => dealById(r.dealId)?.channel === "club");
-    const individual = isClubAdmin() ? individualK1View() : "";
     const years = [...new Set(clubK1.map((r) => r.year))].sort((a, b) => b - a);
     const add = isClubAdmin() ? '<button class="btn primary" type="button" data-add-k1>Add K-1 figures</button>' : "";
-    const intro = `<p class="muted" style="margin:-4px 0 0">The club's K-1 for each deal and year, split across the deal's holders by their share of the money in that deal at 12/31 of that year. That split is an estimate (the real one follows the partnership agreement), so confirm with your accountant. Each year shows that year on its own and the running total of that year plus all prior years.</p>`;
-    if (!years.length) return `<div class="stack"><div class="section-head"><h2>K-1 income and expenses</h2>${add}</div>${intro}<div class="card"><p class="muted" style="margin:0">No club K-1 figures entered yet.${isClubAdmin() ? " Press Add K-1 figures after a deal sends its K-1." : ""}</p></div>${individual}</div>`;
+    const intro = `<p class="muted" style="margin:-4px 0 0">The club's K-1 for each deal and year, split across the deal's holders by their share of the money in that deal at 12/31 of that year. That split is an estimate (the real one follows the partnership agreement), so confirm with your accountant. Each year shows that year on its own and the running total of that year plus all prior years.${isClubAdmin() ? " K-1s for individual deals aren't entered here: use Add K-1 on that deal's card in the Deals tab (Individual or All view)." : ""}</p>`;
+    if (!years.length) return `<div class="stack"><div class="section-head"><h2>K-1 income and expenses</h2>${add}</div>${intro}<div class="card"><p class="muted" style="margin:0">No K-1 figures entered yet.${isClubAdmin() ? " Press Add K-1 figures after a deal sends its K-1." : ""}</p></div></div>`;
     const net = (a) => r2((a?.income || 0) - (a?.expenses || 0));
     const cumFor = (pid, y) => r2([...perYear.entries()].filter(([yy]) => yy <= y).reduce((s, [, m]) => s + net(m.get(pid)), 0));
     const cards = years.map((y) => {
@@ -461,30 +461,28 @@
         <ul class="k1list">${recHtml}</ul></div>`;
     });
     const orphan = unsplit.length ? `<p class="banner">${unsplit.map((r) => `${esc(dealById(r.dealId)?.name || "A deal")} ${r.year}`).join(", ")}: no investors in that deal by 12/31 of the year, so ${unsplit.length === 1 ? "its K-1 can't" : "their K-1s can't"} be split across members.</p>` : "";
-    return `<div class="stack"><div class="section-head"><h2>K-1 income and expenses</h2>${add}</div>${intro}${orphan}${cards.join("")}${individual}</div>`;
+    return `<div class="stack"><div class="section-head"><h2>K-1 income and expenses</h2>${add}</div>${intro}${orphan}${cards.join("")}</div>`;
   }
-  // The admin's list of K-1s for individual deals, each split across that deal's holders the same way. Not part of the club's Year-end
-  // or capital accounts. A holder sees only their own share, on the Deals tab.
-  function individualK1View() {
-    const recs = state.k1.filter((r) => dealById(r.dealId)?.channel === "individual");
+  // An individual deal's K-1s, shown on that deal's card in the Deals tab (admin only): each year's K-1 split across the deal's holders
+  // by their share of the money in it at 12/31. Individual deals are not part of the Club tab, Year-end or the capital accounts.
+  // A holder sees only their own share (myK1Note), never this.
+  function dealK1Panel(d) {
+    if (d.channel !== "individual" || state.role !== "admin" || state.previewOf) return "";
+    const recs = state.k1.filter((r) => r.dealId === d.id).sort((a, b) => b.year - a.year);
     if (!recs.length) return "";
-    const years = [...new Set(recs.map((r) => r.year))].sort((a, b) => b - a);
-    const cards = years.map((y) => {
-      const items = recs.filter((r) => r.year === y).sort((a, b) => (dealById(a.dealId)?.name || "").localeCompare(dealById(b.dealId)?.name || "")).map((r) => {
-        const by = new Map();
-        state.holdings.filter((h) => h.dealId === r.dealId && h.date <= `${r.year}-12-31`).forEach((h) => by.set(h.personId, (by.get(h.personId) || 0) + h.invested));
-        const ids = [...by.keys()].sort(), w = ids.map((id) => by.get(id));
-        let split = `<p class="banner">No one had invested in this deal by 12/31/${r.year}, so its K-1 can't be split.</p>`;
-        if (w.reduce((t, v) => t + v, 0) > 0) {
-          const inc = splitCents(lineSum(r, "income"), w), exp = splitCents(lineSum(r, "expense"), w);
-          split = `<div class="table-wrap"><table><thead><tr><th>Holder</th><th class="num">Income</th><th class="num">Expenses</th><th class="num">Net</th></tr></thead><tbody>${ids.map((id, i) => `<tr><td>${esc(personById(id)?.name || "Holder")}</td><td class="num">${inc[i] ? usd2.format(inc[i]) : "—"}</td><td class="num">${exp[i] ? usd2.format(exp[i]) : "—"}</td><td class="num">${signed2(r2(inc[i] - exp[i]))}</td></tr>`).join("")}</tbody></table></div>`;
-        }
-        return `<li><div class="person-head" style="margin:0"><span><strong>${esc(dealById(r.dealId)?.name || "Deal")}</strong> ${channelPill(dealById(r.dealId))} · income ${usd2.format(lineSum(r, "income"))} · expenses ${usd2.format(lineSum(r, "expense"))}</span><button class="btn small" type="button" data-edit-k1="${esc(r.id)}">Edit</button></div>
-          <details><summary>${r.lines.length} line${r.lines.length === 1 ? "" : "s"}</summary><ul>${r.lines.map((l) => `<li>${esc(l.label)} (${l.type}): ${usd2.format(l.amount)}</li>`).join("")}</ul>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}</details>${split}</li>`;
-      });
-      return `<div class="card"><div class="person-head"><h3>${y}</h3></div><ul class="k1list">${items.join("")}</ul></div>`;
+    const items = recs.map((r) => {
+      const by = new Map();
+      state.holdings.filter((h) => h.dealId === r.dealId && h.date <= `${r.year}-12-31`).forEach((h) => by.set(h.personId, (by.get(h.personId) || 0) + h.invested));
+      const ids = [...by.keys()].sort(), w = ids.map((id) => by.get(id));
+      let split = `<p class="banner">No one had invested in this deal by 12/31/${r.year}, so its K-1 can't be split.</p>`;
+      if (w.reduce((t, v) => t + v, 0) > 0) {
+        const inc = splitCents(lineSum(r, "income"), w), exp = splitCents(lineSum(r, "expense"), w);
+        split = `<div class="table-wrap"><table><thead><tr><th>Holder</th><th class="num">Income</th><th class="num">Expenses</th><th class="num">Net</th></tr></thead><tbody>${ids.map((id, i) => `<tr><td>${esc(personById(id)?.name || "Holder")}</td><td class="num">${inc[i] ? usd2.format(inc[i]) : "—"}</td><td class="num">${exp[i] ? usd2.format(exp[i]) : "—"}</td><td class="num">${signed2(r2(inc[i] - exp[i]))}</td></tr>`).join("")}</tbody></table></div>`;
+      }
+      return `<li><div class="person-head" style="margin:0"><span><strong>K-1 ${r.year}</strong> · income ${usd2.format(lineSum(r, "income"))} · expenses ${usd2.format(lineSum(r, "expense"))}</span><button class="btn small" type="button" data-edit-k1="${esc(r.id)}">Edit</button></div>
+        <details><summary>${r.lines.length} line${r.lines.length === 1 ? "" : "s"}</summary><ul>${r.lines.map((l) => `<li>${esc(l.label)} (${l.type}): ${usd2.format(l.amount)}</li>`).join("")}</ul>${r.note ? `<p class="muted">${esc(r.note)}</p>` : ""}</details>${split}</li>`;
     });
-    return `<div class="section-head"><h2>Individual deals</h2></div><p class="muted" style="margin:-4px 0 0">K-1s for individual deals, split across each deal's holders by their share of the money in it at 12/31. They are not part of the club's Year-end totals or capital accounts. Each holder sees only their own share, on the Deals tab. Confirm the split with your accountant.</p>${cards.join("")}`;
+    return `<div class="k1panel"><h4 style="margin:12px 0 4px">K-1 (split across the holders by their share of the money in the deal at 12/31; an estimate, confirm with your accountant)</h4><ul class="k1list">${items.join("")}</ul></div>`;
   }
   const signed2 = (n) => `${n < 0 ? "−" : ""}${usd2.format(Math.abs(n))}`;
 
@@ -523,10 +521,11 @@
   }
 
   // The K-1 entry window: a deal, a year, and any number of income / expense lines (a loss is a negative income line).
-  function editK1(id) {
+  function editK1(id, dealId) {
     const r = id ? state.k1.find((x) => x.id === id) : null;
-    const clubDeals = state.deals.filter((d) => d.channel === "club" || d.channel === "individual").map((d) => ({ id: d.id, name: d.channel === "individual" ? `${d.name} (individual)` : d.name }));
-    if (!clubDeals.length) { alert("Add a deal first."); return; }
+    const only = dealId || (r && dealById(r.dealId)?.channel === "individual" ? r.dealId : null);   // an individual deal's K-1 is entered from its own card, so the window is fixed to that deal
+    const clubDeals = only ? state.deals.filter((d) => d.id === only) : state.deals.filter((d) => d.channel === "club");
+    if (!clubDeals.length) { alert("Add a Power Lunch Club deal first."); return; }
     const lines = r ? r.lines : [{ type: "income", label: "Ordinary income", amount: "" }, { type: "expense", label: "Expenses", amount: "" }];
     let n = 0;
     const row = (l) => { const i = n++; return `<div class="k1row"><select class="k1t" name="t${i}" aria-label="Line type"><option value="income"${l.type === "income" ? " selected" : ""}>Income</option><option value="expense"${l.type === "expense" ? " selected" : ""}>Expense</option></select><input class="k1l" name="l${i}" maxlength="60" placeholder="e.g. Interest" aria-label="Line description" value="${esc(l.label || "")}"><input class="k1a" name="a${i}" type="number" step="0.01" inputmode="decimal" placeholder="Amount" aria-label="Amount" value="${l.amount === "" ? "" : esc(String(l.amount))}"></div>`; };
@@ -1004,6 +1003,7 @@
     if (t.hasAttribute("data-csv-yearend")) yearEndCsv();
     if (t.dataset.clubSec) { state.clubSection = t.dataset.clubSec; render(); }
     if (t.hasAttribute("data-add-k1")) editK1(null);
+    if (t.dataset.addDealK1) editK1(null, t.dataset.addDealK1);
     if (t.dataset.editK1) editK1(t.dataset.editK1);
     if (t.dataset.editOwn) editDeal(t.dataset.editOwn, true);
     if (t.hasAttribute("data-add-own")) addOwnDeal();
